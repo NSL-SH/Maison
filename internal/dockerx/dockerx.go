@@ -74,6 +74,27 @@ type Container struct {
 	State       string // running, exited, created, ...
 	Health      string // healthy | unhealthy | starting | "" (no health check)
 	Ports       []Port
+	// ProxyHosts are the site addresses the container's caddy-docker-proxy labels
+	// (`caddy`, `caddy_<n>`) claim, lowercased: the names the box really routes to it.
+	ProxyHosts []string
+}
+
+// proxyHosts reads the site addresses out of caddy-docker-proxy labels. A label
+// value may list several addresses, separated by commas and/or spaces.
+func proxyHosts(labels map[string]string) []string {
+	var out []string
+	for k, v := range labels {
+		if k != "caddy" {
+			n, ok := strings.CutPrefix(k, "caddy_")
+			if !ok || n == "" || strings.Trim(n, "0123456789") != "" {
+				continue
+			}
+		}
+		for _, h := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
+			out = append(out, strings.ToLower(h))
+		}
+	}
+	return out
 }
 
 // parseHealth extracts a container health check verdict from the ContainerList
@@ -139,6 +160,7 @@ func (c *Client) ListAllContainers(ctx context.Context) ([]Container, error) {
 			State:       ct.State,
 			Health:      parseHealth(ct.Status),
 			Ports:       ports,
+			ProxyHosts:  proxyHosts(ct.Labels),
 		})
 	}
 	return out, nil

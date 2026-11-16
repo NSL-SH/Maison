@@ -48,7 +48,7 @@ func (s *Server) onboardingGate(next http.Handler) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		http.Redirect(w, r, withReturn(setupURL, r), http.StatusSeeOther)
+		http.Redirect(w, r, withReturn(sameForm(setupURL, requestHost(r), s.cfg.AppDomain()), r), http.StatusSeeOther)
 	})
 }
 
@@ -83,6 +83,42 @@ func withReturn(setupURL string, r *http.Request) string {
 	return u.String()
 }
 
+// sameForm rewrites a platform page's address on this box into the form the
+// browser is using. A deployment's URLs (the setup page, the support page) are
+// written in the dash form <name>-<domain>, which every box serves; an owner who
+// reached Maison on a dot name (<x>.<domain>) is sent to <name>.<domain> instead,
+// on the same certificate and session scope they arrived with. Anything else is
+// returned unchanged.
+func sameForm(rawURL, reqHost, domain string) string {
+	domain = strings.ToLower(domain)
+	h := strings.ToLower(hostOnly(reqHost))
+	if domain == "" || !strings.HasSuffix(h, "."+domain) {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Port() != "" {
+		return rawURL
+	}
+	name, ok := strings.CutSuffix(strings.ToLower(u.Host), "-"+domain)
+	if !ok || name == "" || strings.Contains(name, ".") {
+		return rawURL
+	}
+	u.Host = name + "." + domain
+	return u.String()
+}
+
+// requestHost is the host the browser addressed: the first X-Forwarded-Host, else
+// the Host header.
+func requestHost(r *http.Request) string {
+	if fwd := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); fwd != "" {
+		if i := strings.IndexByte(fwd, ','); i >= 0 {
+			fwd = strings.TrimSpace(fwd[:i])
+		}
+		return fwd
+	}
+	return r.Host
+}
+
 // requestOrigin reconstructs the absolute address this request arrived at.
 // Maison is always reached through a reverse proxy that terminates TLS, so the
 // scheme comes from the forwarded header first and the connection only decides
@@ -98,12 +134,5 @@ func requestOrigin(r *http.Request) string {
 			scheme = "https"
 		}
 	}
-	host := r.Host
-	if fwd := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); fwd != "" {
-		if i := strings.IndexByte(fwd, ','); i >= 0 {
-			fwd = strings.TrimSpace(fwd[:i])
-		}
-		host = fwd
-	}
-	return scheme + "://" + host + "/"
+	return scheme + "://" + requestHost(r) + "/"
 }

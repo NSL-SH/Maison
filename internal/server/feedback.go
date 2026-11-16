@@ -44,7 +44,7 @@ func (s *Server) handleGetFeedback(w http.ResponseWriter, r *http.Request) {
 		Operator:    d.Operator,
 		PrivacyNote: d.PrivacyNote,
 		MaxLength:   d.Limit(),
-		SupportURL:  d.SupportURL,
+		SupportURL:  sameForm(d.SupportURL, requestHost(r), s.cfg.AppDomain()),
 		Categories:  feedback.Categories,
 		Version:     brand.Version,
 	})

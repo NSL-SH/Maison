@@ -53,6 +53,10 @@ type App struct {
 	// When empty, the frontend opens the box's own host on Port (with Scheme and
 	// Index) — a webui-port with no host, or the published host port.
 	URL string `json:"url,omitempty"`
+	// DotURL is URL in the dot form, when URL is the dash name <x>-<domain> and the
+	// app's containers are routed on <x>.<domain> too. The dashboard opens it when
+	// it is itself on a dot name, so a click keeps the owner in the form they use.
+	DotURL string `json:"dot_url,omitempty"`
 	// Health is the aggregated Docker health-check verdict: "healthy",
 	// "unhealthy", "starting", or "" when no container declares a health check.
 	// Drives the tile's top-left status dot (green/orange).
@@ -311,6 +315,7 @@ type projectState struct {
 	unhealthy  int
 	starting   int
 	svcPorts   map[string][]dockerx.Port // service name -> published ports
+	hosts      map[string]bool           // proxy site addresses of its containers
 }
 
 // health aggregates the project's per-container verdicts into one dot state:
@@ -372,6 +377,12 @@ func (r *Registry) List(ctx context.Context) ([]App, error) {
 		if len(c.Ports) > 0 {
 			ps.svcPorts[c.Service] = c.Ports
 		}
+		for _, h := range c.ProxyHosts {
+			if ps.hosts == nil {
+				ps.hosts = map[string]bool{}
+			}
+			ps.hosts[h] = true
+		}
 	}
 
 	seen := map[string]bool{}
@@ -387,6 +398,7 @@ func (r *Registry) List(ctx context.Context) ([]App, error) {
 			ca = r.metaFor(name, ps.workingDir)
 			app = buildApp(name, ca, r.cfg.AppDomain(), true, statusOf(ps.running, ps.total), ps.svcPorts)
 			r.applyRoutes(&app, name, ca, ps.svcPorts)
+			app.DotURL = dotURL(app.URL, r.cfg.AppDomain(), ps.hosts)
 			app.Health = ps.health()
 		} else {
 			// Installed but down (or Docker didn't answer): greyed, stopped tile.
@@ -419,6 +431,7 @@ func (r *Registry) List(ctx context.Context) ([]App, error) {
 		}
 		app := buildApp(name, ca, r.cfg.AppDomain(), false, statusOf(ps.running, ps.total), ps.svcPorts)
 		r.applyRoutes(&app, name, ca, ps.svcPorts)
+		app.DotURL = dotURL(app.URL, r.cfg.AppDomain(), ps.hosts)
 		app.Health = ps.health()
 		app.Busy = r.isBusy(name)
 		out = append(out, app)
@@ -429,6 +442,27 @@ func (r *Registry) List(ctx context.Context) ([]App, error) {
 	resolveParents(out)
 	r.rememberLifecycles(out)
 	return out, nil
+}
+
+// dotURL is rawURL with its host <x>-<domain> moved to <x>.<domain>, when the box
+// routes that dot name to the app (hosts: its containers' proxy addresses). ""
+// otherwise: an app whose labels name only the dash form (a hand-written caddy
+// label) keeps it.
+func dotURL(rawURL, domain string, hosts map[string]bool) string {
+	domain = strings.ToLower(domain)
+	if rawURL == "" || domain == "" || len(hosts) == 0 {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Port() != "" {
+		return ""
+	}
+	name, ok := strings.CutSuffix(strings.ToLower(u.Hostname()), "-"+domain)
+	if !ok || name == "" || strings.Contains(name, ".") || !hosts[name+"."+domain] {
+		return ""
+	}
+	u.Host = name + "." + domain
+	return u.String()
 }
 
 // resolveParents keeps each app's declared `parent` only when it names another
@@ -759,7 +793,7 @@ func reachableHostPort(svcPorts map[string][]dockerx.Port, webui int) int {
 // FindByHost resolves the app whose click URL is served at host (an app gateway
 // host such as `<app>-<domain>`), so the launch gate can identify which app it is
 // standing in for. It matches the app's resolved web URL host, the
-// `<id>-<refDomain>` convention, or the app's host on any domain of the routing
+// `<id>-<refDomain>` / `<id>.<refDomain>` conventions, or the app's host on any domain of the routing
 // setting. Returns false when no app maps to host.
 func (r *Registry) FindByHost(ctx context.Context, host, refDomain string) (App, bool) {
 	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
@@ -784,7 +818,7 @@ func (r *Registry) FindByHost(ctx context.Context, host, refDomain string) (App,
 		if h := urlHost(a.URL); h != "" && strings.EqualFold(h, host) {
 			return a, true
 		}
-		if refDomain != "" && strings.EqualFold(a.ID+"-"+refDomain, host) {
+		if refDomain != "" && (strings.EqualFold(a.ID+"-"+refDomain, host) || strings.EqualFold(a.ID+"."+refDomain, host)) {
 			return a, true
 		}
 		// Every domain the app is published on, not only the primary: a stopped

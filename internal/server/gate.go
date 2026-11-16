@@ -138,16 +138,26 @@ func (s *Server) gateStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "starting", "id": app.ID})
 }
 
+// dashboardURL is the dashboard's address next to an app reached at reqHost: the
+// dot form maison.<domain> from a dot name, the dash form otherwise.
+func dashboardURL(reqHost, domain string) string {
+	sep := "-"
+	if h := strings.ToLower(hostOnly(reqHost)); strings.HasSuffix(h, "."+strings.ToLower(domain)) {
+		sep = "."
+	}
+	return "https://" + brand.Slug + sep + domain
+}
+
 // gatePage serves the launch page in gate mode. Its deep-links point at the
-// dashboard host when a domain is configured, and are omitted otherwise.
-func (s *Server) gatePage(w http.ResponseWriter, _ *http.Request) {
+// dashboard host (dashboardURL) when a domain is configured, and are omitted otherwise.
+func (s *Server) gatePage(w http.ResponseWriter, r *http.Request) {
 	boot := launchBoot{
 		Mode:      "gate",
 		Reachable: brand.GateRoot + "/reachable",
 		Start:     brand.GateRoot + "/start",
 	}
 	if d := s.cfg.AppDomain(); d != "" {
-		host := "https://" + brand.Slug + "-" + d
+		host := dashboardURL(r.Host, d)
 		boot.Dashboard = &host
 	}
 	writeLaunchPage(w, boot)

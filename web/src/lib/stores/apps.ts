@@ -46,6 +46,10 @@ export interface App {
   has_tips?: boolean
   /** Fully-resolved click URL from x-compose-app (webui-*); wins when set. */
   url?: string
+  /** `url` in the dot form <x>.<domain>, when the box routes it (server-side, from
+   *  the app's proxy labels). Opened instead of `url` while the dashboard itself is
+   *  on a dot name. */
+  dot_url?: string
   /** Aggregated Docker health-check verdict; drives the tile status dot.
    *  Absent when no container declares a health check. */
   health?: 'healthy' | 'unhealthy' | 'starting'
@@ -746,11 +750,26 @@ export function getServices(id: string): Promise<AppService[]> {
 export function appUrl(a: App): string {
   // A webui-host resolves the full URL server-side; use it verbatim. Otherwise a
   // port names a port on the box's own host.
-  if (a.url) return a.url
+  if (a.url) return a.dot_url && onDotName(a.dot_url) ? a.dot_url : a.url
   const scheme = a.scheme || 'http'
   const index = a.index && a.index !== '/' ? a.index : ''
   if (a.port) return `${scheme}://${location.hostname}:${a.port}${index}`
   return ''
+}
+
+/** Whether the dashboard is on a dot name of the domain `dotUrl` lives on
+ *  (maison.<domain>, not maison-<domain> or an IP name): the owner's form, which a
+ *  tile click keeps. */
+export function onDotName(dotUrl: string, here: string = location.hostname): boolean {
+  let host: string
+  try {
+    host = new URL(dotUrl).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  const domain = host.slice(host.indexOf('.') + 1)
+  const h = here.toLowerCase()
+  return domain !== '' && h !== domain && h.endsWith('.' + domain)
 }
 
 /** Open an app, or warn if it has no reachable URL.
