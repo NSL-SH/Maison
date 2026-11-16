@@ -453,6 +453,7 @@
   "updates_why_timeout": "The backup before the update took too long — usually an app with a very large number of files. Nothing was changed.",
   "updates_why_backup_busy": "A backup or restore of this app was running. Nothing was changed — retry once it is done.",
   "updates_why_backup_failed": "The backup before the update failed, so nothing was changed.",
+  "updates_why_pull_failed": "The new version could not be downloaded — usually the registry or the network failing for a moment. Nothing was changed: retry later.",
   "updates_why_rolled_back": "The new version didn't start, so its backup was restored. The previous version is running.",
   "updates_why_not_running": "The new version didn't start. Its backup was restored, but the previous version isn't running.",
   "updates_why_rollback_failed": "The new version didn't start, and restoring its backup failed too.",

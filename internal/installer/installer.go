@@ -74,6 +74,8 @@ type Installer struct {
 	cfg   config.Config
 	store *appstore.Manager
 	dx    *dockerx.Client // optional; used for image-pull progress
+	// pullSeam replaces dx for the update's pull (pullForUpdate) in tests.
+	pullSeam imagePuller
 
 	// Report and Resolve raise and clear entries in the box's incident register
 	// (internal/incident). An install or an update that fails is visible on the tile

@@ -6,6 +6,7 @@ package composefile
 import (
 	"errors"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -29,6 +30,25 @@ type Service struct {
 	// Ports is the service's `ports:` list, each entry as written: a short-syntax
 	// string (`"51820:51820/udp"`) or a long-syntax mapping. Read by `maison lint`.
 	Ports []any `yaml:"ports,omitempty"`
+	// Build and PullPolicy say whether compose pulls Image at all: a service it
+	// builds, or one with pull_policy build/never, never reaches a registry. Read
+	// by the update's pull, which must not refuse over an image no pull can fetch.
+	Build      any    `yaml:"build,omitempty"`
+	PullPolicy string `yaml:"pull_policy,omitempty"`
+}
+
+// Pulled reports whether `compose up` would fetch the service's image from a
+// registry: it names one literally (no ${VAR}, which only compose can resolve),
+// and compose neither builds it nor is forbidden to pull it.
+func (s Service) Pulled() bool {
+	if s.Image == "" || strings.Contains(s.Image, "${") || s.Build != nil {
+		return false
+	}
+	switch s.PullPolicy {
+	case "build", "never":
+		return false
+	}
+	return true
 }
 
 // Exposed maps every service to the ports it lists under `expose:` — what route

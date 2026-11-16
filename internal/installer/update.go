@@ -213,14 +213,20 @@ func (in *Installer) ApplyUpdate(ctx context.Context, project string, opts Updat
 	}
 
 	// The new version's images, pulled while the old version is still serving: the stop
-	// below would otherwise cost the whole download, not just the swap. Not fatal —
-	// `compose up` pulls whatever is still missing, and fails loudly if it cannot.
+	// below would otherwise cost the whole download, not just the swap. An image that
+	// cannot be pulled REFUSES the update here, before the backup and the stop — left
+	// to `compose up`, the same failure comes after the stop and costs a full restore.
+	// See pullForUpdate.
 	if f, err := composefile.Parse(newBase); err == nil {
-		images := append(composeImages(f), migrationImages(plan)...)
+		extra := migrationImages(plan)
 		if a, err := f.App(); err == nil && a != nil {
-			images = append(images, stepImages(a.Steps)...)
+			extra = append(extra, stepImages(a.Steps)...)
 		}
-		in.pullList(ctx, images, func(ev Event) { step(UpdatePhasePull, ev.Message, ev.Download) })
+		emit := func(ev Event) { step(UpdatePhasePull, ev.Message, ev.Download) }
+		var refused *PullRefusedError
+		if err := pullForUpdate(ctx, in.puller(), updateImages(f, extra), emit); errors.As(err, &refused) {
+			return res, in.refusePull(project, refused)
+		}
 	}
 
 	// The backup, before anything is written: to every enabled destination, the same

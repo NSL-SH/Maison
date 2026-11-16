@@ -242,6 +242,12 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 			out["reason"] = dr.Reason
 			status = http.StatusConflict
 		}
+		var pr *installer.PullRefusedError
+		if errors.As(err, &pr) {
+			// Refused over the new version's images, nothing changed.
+			out["reason"] = installer.UpdateRefusedPull
+			status = http.StatusConflict
+		}
 		writeJSON(w, status, out)
 		return
 	}

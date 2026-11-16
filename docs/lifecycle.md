@@ -240,7 +240,17 @@ version's setup steps run before `compose up`, against the app's data, and the o
 still have that data open — taking the backup restarts them on its way out. A
 database that takes an exclusive lock fails every such step: FileBrowser's bolt database
 answers `timeout` after a second, and the update is rolled back for nothing. The images
-are pulled first (step 3) so the stop costs the swap rather than the download. A system
+are pulled first (step 3) so the stop costs the swap rather than the download.
+
+That pull is **not best-effort**. Each image the new version needs from a registry gets
+three tries (a service compose builds, `pull_policy: build|never` and `${VAR}` images
+are left to compose). If one is still missing afterwards, **the update is refused** before the
+backup and the stop: `409` with `reason: pull_failed`, the same reason on the run item
+and in the `app.update:<app>` warning, and nothing changed. *Update without backup*
+does not get past it. Before v1.1.99 a failed pull was ignored, `compose up` hit the
+same failure after the stop, and the rollback restored the whole backup over data nothing
+had touched (mestio's 92 GiB immich, down 44 minutes on 2026-11-16, over a ghcr
+connection reset). A system
 app is not stopped: stopping the dashboard, or the gateway in front of it, takes down the
 process doing the update.
 

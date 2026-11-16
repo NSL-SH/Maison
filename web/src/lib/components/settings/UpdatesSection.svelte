@@ -113,10 +113,11 @@
   /** Refused over the app's data (docs/migrations.md). Nothing changed, and "update
    *  without backup" is no way past any of them. */
   const DATA_REFUSED = ['data_blocked', 'data_newer', 'data_store_error', 'data_no_backup']
-  const REFUSED = new Set(['no_room', 'backup_timeout', 'backup_busy', 'backup_failed', ...DATA_REFUSED])
-  /** Refusals "update without backup" is no way past: the app's data, or a backup or
-   *  restore of the app already running (the update waits for it either way). */
-  const NO_BACKUP_DOES_NOT_HELP = [...DATA_REFUSED, 'backup_busy']
+  const REFUSED = new Set(['no_room', 'backup_timeout', 'backup_busy', 'backup_failed', 'pull_failed', ...DATA_REFUSED])
+  /** Refusals "update without backup" is no way past: the app's data, a backup or
+   *  restore of the app already running (the update waits for it either way), or the
+   *  new version's images failing to download. */
+  const NO_BACKUP_DOES_NOT_HELP = [...DATA_REFUSED, 'backup_busy', 'pull_failed']
   const BROKEN = new Set(['broken', 'rollback_failed', 'not_running'])
 
   type RowState = 'queued' | 'updating' | 'updated' | 'refused' | 'rolled_back' | 'broken' | 'failed' | 'idle'
@@ -156,6 +157,8 @@
         return $t('updates_why_backup_busy')
       case 'backup_failed':
         return $t('updates_why_backup_failed')
+      case 'pull_failed':
+        return $t('updates_why_pull_failed')
       case 'rolled_back':
         return $t('updates_why_rolled_back')
       case 'not_running':

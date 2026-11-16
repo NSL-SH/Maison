@@ -453,6 +453,7 @@
   "updates_why_timeout": "La sauvegarde avant la mise à jour a pris trop de temps — en général une app avec un très grand nombre de fichiers. Rien n'a été modifié.",
   "updates_why_backup_busy": "Une sauvegarde ou une restauration de cette app était en cours. Rien n'a été modifié — réessayez une fois terminée.",
   "updates_why_backup_failed": "La sauvegarde avant la mise à jour a échoué, rien n'a donc été modifié.",
+  "updates_why_pull_failed": "La nouvelle version n'a pas pu être téléchargée — en général le registre ou le réseau a échoué un instant. Rien n'a été modifié : réessayez plus tard.",
   "updates_why_rolled_back": "La nouvelle version n'a pas démarré, la précédente a donc été remise en place. Elle fonctionne.",
   "updates_why_not_running": "La nouvelle version n'a pas démarré. La précédente a été remise en place, mais elle ne fonctionne pas.",
   "updates_why_rollback_failed": "La nouvelle version n'a pas démarré, et la remise en place de la précédente a aussi échoué.",

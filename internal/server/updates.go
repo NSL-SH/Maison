@@ -365,6 +365,10 @@ func (s *Server) runUpdates(q []string, opts installer.UpdateOptions) {
 				if errors.As(err, &dr) {
 					it.Reason = dr.Reason
 				}
+				var pr *installer.PullRefusedError
+				if errors.As(err, &pr) {
+					it.Reason = installer.UpdateRefusedPull
+				}
 				return
 			}
 			it.Status = runDone
