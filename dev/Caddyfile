@@ -29,10 +29,6 @@
 # your browser (and in app containers, see README) to silence warnings and let
 # OIDC back-channel TLS validate.
 (gateway_tls) {
-	# Restore original host when a request arrives through a CF-worker-style
-	# proxy (parity with prod; harmless locally).
-	@has_original_host header X-Original-Host *
-	request_header @has_original_host Host {http.request.header.X-Original-Host}
 	tls /certs/cert.pem /certs/key.pem
 }
 
