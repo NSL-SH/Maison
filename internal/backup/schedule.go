@@ -771,11 +771,17 @@ func scheduleFires(conf backupconfig.Config) bool {
 // jitter spreads a fleet's runs across half an hour.
 //
 // A thousand boxes all starting at 03:30 is a self-inflicted thundering herd against
-// one bucket. The offset is derived from the data path so it is stable for a given
-// box — a box that jittered differently each night would defeat the point — and
-// derived rather than random so it needs nothing persisted.
+// one bucket. The offset is derived, so it is stable for a given box — a box that
+// jittered differently each night would defeat the point — and needs nothing
+// persisted. The data path alone is the same on every box (/DATA), so the box's own
+// domain is part of the seed; a box without one keeps the path-only offset. Two boxes
+// sharing a backup space get two offsets this way.
 func (s *Scheduler) jitter() time.Duration {
-	sum := sha256.Sum256([]byte(s.cfg.DataHostPath + "|" + s.cfg.DataRoot))
+	seed := s.cfg.DataHostPath + "|" + s.cfg.DataRoot
+	if d := s.cfg.AppDomain(); d != "" {
+		seed += "|" + d
+	}
+	sum := sha256.Sum256([]byte(seed))
 	return time.Duration(binary.BigEndian.Uint32(sum[:4])%uint32(30*time.Minute/time.Second)) * time.Second
 }
 

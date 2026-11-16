@@ -276,6 +276,22 @@ func TestJitterIsStablePerBoxAndBounded(t *testing.T) {
 	}
 }
 
+// Every box mounts the same /DATA, so the path alone gave the whole fleet one offset.
+// The box's domain separates them; without one the offset is the path-only one, as before.
+func TestJitterDiffersBetweenBoxesWithTheSamePaths(t *testing.T) {
+	withDomain := func(d string) *Scheduler {
+		env := map[string]string{"APP_DOMAIN": d}
+		return NewScheduler(config.Config{DataRoot: "/DATA", DataHostPath: "/DATA", AppEnv: func() map[string]string { return env }}, nil, New(), backupconfig.New(""))
+	}
+	if withDomain("alice.nsl.sh").jitter() == withDomain("bob.nsl.sh").jitter() {
+		t.Error("two boxes with the same paths and different domains got the same offset")
+	}
+	bare := NewScheduler(config.Config{DataRoot: "/DATA", DataHostPath: "/DATA"}, nil, New(), backupconfig.New(""))
+	if withDomain("").jitter() != bare.jitter() {
+		t.Error("a box without a domain must keep its previous offset")
+	}
+}
+
 // The config store must not lose a false — the trap that disqualified usersettings.
 func TestConfigRoundTripsFalse(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "backup.json")
