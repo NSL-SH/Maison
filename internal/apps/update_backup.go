@@ -113,8 +113,12 @@ func (r *Registry) UpdateTargets(id string) (targets []Provider, dropped string,
 // return to, and an archive of the broken one is a second copy of the app on the disk
 // for nobody (a 110 GB one filled watch.nsl.sh's disk a week after a failed update).
 //
-// The app is already stopped — the failed converge left it so — and is not started
-// here; the caller starts it and watches it.
+// The app is stopped first, and is not started here; the caller starts it and watches
+// it. A failed converge does NOT leave it stopped: `compose up` that fails on a
+// dependency's healthcheck has already started that dependency, and leaves it running.
+// On yunderateam (2026-11-16) the new MariaDB kept running on its data files while
+// the restore wrote the old ones over them, and the database had to be rebuilt from a
+// dump.
 //
 // It tries every enabled engine holding the backup, the one that restores by rename
 // first, and moves to the next when one fails: a backup written to several
@@ -142,6 +146,17 @@ func (r *Registry) RestoreOver(ctx context.Context, id, name string) error {
 	sources := r.restoreSources(ctx, id, name)
 	if len(sources) == 0 {
 		return fmt.Errorf("backup not found: %s", name)
+	}
+	// An app that declares itself not stoppable keeps running, as it did through the
+	// update: stopping Maison's own stack would stop the process doing the restore.
+	if r.isRunning(ctx, id) {
+		if r.Stoppable(id) {
+			if err := r.dx.StopProject(ctx, id); err != nil {
+				return fmt.Errorf("stop app before restoring: %w", err)
+			}
+		} else {
+			log.Printf("update %s: restoring over a running app that is not stoppable", id)
+		}
 	}
 	var errs []error
 	for _, src := range sources {
