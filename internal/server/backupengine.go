@@ -356,6 +356,11 @@ type engineInfo struct {
 	// deployment offers such a place. Absent, the page offers no link.
 	RecoveryHelpURL string `json:"recovery_help_url,omitempty"`
 
+	// SetupURL is where to choose this engine's storage when it has none (a PCS whose
+	// backup space was unbound). Absent, the page offers no link. See
+	// apps.EngineStatus.SetupURL.
+	SetupURL string `json:"setup_url,omitempty"`
+
 	// NeedsSecret is provisioned, empty storage waiting for the owner to choose the
 	// password its repository will be created with. See apps.EngineStatus.NeedsSecret.
 	NeedsSecret bool `json:"needs_secret"`
@@ -398,6 +403,7 @@ func (s *Server) handleBackupStatus(w http.ResponseWriter, r *http.Request) {
 		st := p.Status(r.Context())
 		info.Connected, info.Detail, info.Name = st.Connected, st.Detail, st.Label
 		info.NeedsRecovery, info.RecoveryHelpURL = st.NeedsRecovery, st.RecoveryHelpURL
+		info.SetupURL = st.SetupURL
 		info.CanRecover = canRecover(p)
 		info.NeedsSecret, info.CanInit = st.NeedsSecret, canInit(p)
 		// Resolved for this engine alone. Provisioned{} is empty because nothing

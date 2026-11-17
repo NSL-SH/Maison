@@ -61,6 +61,9 @@ export interface EngineInfo {
   /** Where a user who no longer has the key can start over, when the deployment offers
    *  such a place. Absent, no link is shown. */
   recovery_help_url?: string
+  /** Where to choose this engine's storage when it has none — on a PCS whose owner
+   *  unbound its backup space, the dashboard page that binds one. Absent, no link. */
+  setup_url?: string
   /** Provisioned, empty storage waiting for the owner to choose the password its
    *  repository will be created with. Nothing is lost and nothing is backed up there
    *  until they do. */

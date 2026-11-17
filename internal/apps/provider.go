@@ -243,6 +243,12 @@ type EngineStatus struct {
 	// to. Empty means no such place exists, and the page offers no link.
 	RecoveryHelpURL string
 
+	// SetupURL is where to choose the storage this engine writes to, for an engine
+	// that has none: on a PCS whose owner unbound its backup space, the deployment's
+	// dashboard page that binds one. Host-written in state.json like RecoveryHelpURL,
+	// reported only while the engine is not configured. Empty means no such place.
+	SetupURL string
+
 	// NeedsApproval is true for an engine the box has but the owner has not enabled: its
 	// app is installed and declares an adapter, and nothing will be run in it until
 	// someone says so. Neither Configured nor Connected is meaningful beside it — nobody

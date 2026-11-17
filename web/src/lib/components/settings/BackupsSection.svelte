@@ -628,6 +628,11 @@
         // routed nothing, and idle grey would hide the one step left to take.
         level = 'warn'
         note = $t('backup_row_needs_password')
+      } else if (e.setup_url) {
+        // No storage chosen for this engine (the PCS's backup space was unbound): not a
+        // fault, but the box is not backed up off-site, which idle grey would hide.
+        level = 'warn'
+        note = $t('backup_row_needs_space')
       } else if (!receives) {
         // Not a fault. An engine can hold history without being written to any more,
         // and saying "no backups" about it would read as data loss.
@@ -1135,6 +1140,17 @@
             </a>
           </p>
         {/if}
+      </div>
+    {:else if activeInfo?.setup_url}
+      <!-- No storage is chosen for this engine: the deployment says where to choose one. -->
+      <div class="recovery">
+        <h4>{$t('backup_setup_title')}</h4>
+        <p class="hint">{$t('backup_setup_explain')}</p>
+        <p>
+          <a class="go" href={activeInfo.setup_url} target="_blank" rel="noopener noreferrer">
+            {$t('backup_setup_open')}
+          </a>
+        </p>
       </div>
     {:else if activeInfo?.needs_secret}
       <!-- In place of the key block too: there is no repository yet, so no key to show,

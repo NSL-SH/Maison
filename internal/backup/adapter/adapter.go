@@ -174,6 +174,8 @@ type repoState struct {
 	// RecoveryHelpURL is where a user without their key can start over. Absent on a
 	// box whose deployment offers no such place, and on a template that predates it.
 	RecoveryHelpURL string `json:"recoveryHelpUrl,omitempty"`
+	// SetupURL is where to choose the storage when there is none (apps.EngineStatus.SetupURL).
+	SetupURL string `json:"setupUrl,omitempty"`
 }
 
 func (p *Provider) readState() repoState {
@@ -251,6 +253,9 @@ func (p *Provider) probe(ctx context.Context) apps.EngineStatus {
 				st.Detail = ws.Detail
 			}
 		}
+		if errors.Is(err, apps.ErrNotConfigured) && !st.NeedsRecovery && !st.NeedsSecret {
+			st.SetupURL = state.SetupURL
+		}
 		return st
 	}
 	if err := unmarshalResult(raw, &ws); err != nil {
@@ -259,6 +264,10 @@ func (p *Provider) probe(ctx context.Context) apps.EngineStatus {
 	// A repository that already holds backups is never one to create: recovery wins if
 	// an engine ever says both, and a configured engine has nothing left to create.
 	needsSecret := ws.NeedsSecret && !ws.NeedsRecovery && !ws.Configured
+	setupURL := ""
+	if !ws.Configured && !ws.NeedsRecovery && !needsSecret {
+		setupURL = state.SetupURL
+	}
 	return apps.EngineStatus{
 		Configured:      ws.Configured,
 		Connected:       ws.Connected,
@@ -268,6 +277,7 @@ func (p *Provider) probe(ctx context.Context) apps.EngineStatus {
 		NeedsRecovery:   ws.NeedsRecovery,
 		NeedsSecret:     needsSecret,
 		RecoveryHelpURL: state.RecoveryHelpURL,
+		SetupURL:        setupURL,
 	}
 }
 
