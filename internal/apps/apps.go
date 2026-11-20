@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yundera/maison/internal/appenv"
 	"github.com/yundera/maison/internal/asset"
 	"github.com/yundera/maison/internal/composefile"
 	"github.com/yundera/maison/internal/config"
@@ -387,6 +388,9 @@ func (r *Registry) List(ctx context.Context) ([]App, error) {
 
 	seen := map[string]bool{}
 	var out []App
+	// Read once per listing: whether the box has single sign-on decides which
+	// credentials are shown on a tile's first click (see promptsCredentials).
+	sso := ssoConfigured(appenv.Load(r.cfg))
 
 	// Managed apps first — existence comes from the folder, so these always produce
 	// a tile even when Docker is unreachable. Docker state decorates them when known.
@@ -412,7 +416,7 @@ func (r *Registry) List(ctx context.Context) ([]App, error) {
 		if u := r.localIcon(name); u != "" {
 			app.Icon = u
 		}
-		app.CredentialsPending = app.HasCredentials && promptsCredentials(ca) && !r.CredentialsDismissed(name)
+		app.CredentialsPending = app.HasCredentials && promptsCredentials(ca, sso) && !r.CredentialsDismissed(name)
 		app.SetupPending = setupPending(filepath.Join(r.cfg.AppsDir(), name), ca)
 		app.Busy = r.isBusy(name)
 		out = append(out, app)

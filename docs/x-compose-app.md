@@ -715,11 +715,16 @@ x-compose-app:
   username nor password after rendering is dropped. A list rather than one entry,
   because some apps ship two accounts.
 - An override's `credentials` **replaces** the store's list as a whole.
-- `prompt: false` keeps an entry out of the first-click dialog; it is shown only
-  from the tile menu's **Credentials**. Use it for a credential nobody needs day to
-  day, such as an AppShield gate's fallback password behind single sign-on. When
-  every entry says `prompt: false`, the tile opens the app directly. Absent (or
-  anything but a boolean) means `true`. An older Maison ignores the key and prompts.
+- `prompt: false` says the entry isn't needed on the first click **because the box
+  has single sign-on**: an AppShield gate's fallback password. On such a box (its
+  `.env.app` sets `OIDC_REGISTRAR_URL` or `OIDC_ISSUER_URL`, see
+  [app-env.md](./app-env.md#single-sign-on-for-gated-apps)), the entry is kept out of
+  the first-click dialog and shown only from the tile menu's **Credentials**. When
+  every entry says `prompt: false`, the tile then opens the app directly. On a box
+  without single sign-on, the password is the only way in, so the entry is prompted
+  like any other. Absent (or anything but a boolean) means `true`. Maison before 1.1.97
+  ignores the key and always prompts; 1.1.97 to 1.1.103 hide the entry even
+  without single sign-on.
 
 **What the operator sees.** Clicking the tile of an app that declares credentials
 opens a dialog first — username and password with copy buttons, the password masked

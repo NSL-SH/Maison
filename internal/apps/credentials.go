@@ -35,12 +35,16 @@ type RenderedCredential struct {
 // promptsCredentials reports whether any declared credential asks to be shown
 // on the tile's first click. With none, the tile opens the app directly and the
 // credentials stay in the tile menu.
-func promptsCredentials(ca *xcomposeapp.App) bool {
+//
+// `prompt: false` means "not needed on the first click because sign-in goes
+// through single sign-on" — a gate's fallback password. On a box without single
+// sign-on (sso false) that password is the only way in, so it is shown anyway.
+func promptsCredentials(ca *xcomposeapp.App, sso bool) bool {
 	if ca == nil {
 		return false
 	}
 	for _, c := range ca.Credentials {
-		if c.Prompts() && (strings.TrimSpace(c.Username) != "" || strings.TrimSpace(c.Password) != "") {
+		if (c.Prompts() || !sso) && (strings.TrimSpace(c.Username) != "" || strings.TrimSpace(c.Password) != "") {
 			return true
 		}
 	}
@@ -138,4 +142,20 @@ func (r *Registry) SetCredentialsDismissed(id string, dismissed bool) error {
 		return nil
 	}
 	return os.WriteFile(marker, nil, 0o644)
+}
+
+// ssoKeys are the .env.app variables through which a deployment gives its apps'
+// AppShield gates single sign-on (docs/app-env.md, "Single sign-on for gated
+// apps"). One set means the box has SSO.
+var ssoKeys = []string{"OIDC_REGISTRAR_URL", "OIDC_ISSUER_URL"}
+
+// ssoConfigured reports whether the deployment's app env offers single sign-on.
+// appenv.Load drops empty values, so a key written blank counts as unset.
+func ssoConfigured(env map[string]string) bool {
+	for _, k := range ssoKeys {
+		if env[k] != "" {
+			return true
+		}
+	}
+	return false
 }

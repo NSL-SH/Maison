@@ -240,9 +240,10 @@ type Credential struct {
 	Note     Localized         `yaml:"note,omitempty"`
 	Change   *CredentialChange `yaml:"change,omitempty"`
 	// Prompt false keeps the entry out of the dialog shown on the tile's first
-	// click: it is reachable only from the tile menu's Credentials. For a
-	// credential nobody needs day to day, such as a gate's fallback password
-	// behind single sign-on. Absent means true.
+	// click on a box with single sign-on: it is reachable only from the tile
+	// menu's Credentials. It is for a gate's fallback password, which nobody
+	// needs day to day behind SSO; on a box without SSO it is the only way in,
+	// and is prompted anyway (see apps.promptsCredentials). Absent means true.
 	Prompt *bool `yaml:"prompt,omitempty"`
 }
 
