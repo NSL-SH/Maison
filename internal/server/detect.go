@@ -113,6 +113,7 @@ func (s *Server) checkOnce(ctx context.Context, d *detector) {
 	s.ensureKeyEmailedOnce(ctx)
 	// After the send, so a pass that just mailed a secret does not report it unsent.
 	s.checkBackupSecrets(ctx, d)
+	s.closeUncleanBootIncidents(time.Now())
 	d.prune()
 }
 

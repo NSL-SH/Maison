@@ -87,6 +87,11 @@ const (
 	// AtStarted runs it after `docker compose up` returns. A failure is logged
 	// and retried on the next up.
 	AtStarted = "started"
+	// AtUncleanBoot runs it once after the server came back from a stop it did not
+	// shut down for — a power cut, a forced reset — while the app is running. It is
+	// the app's chance to find and repair what the lost writes broke. Its run mode is
+	// always: a marker would make it run after the first crash only.
+	AtUncleanBoot = "unclean-boot"
 
 	// RunOnce runs the step until it succeeds once, remembered in .init/<name>.
 	RunOnce = "once"
@@ -102,8 +107,12 @@ type Step struct {
 	Script `yaml:",inline"`
 }
 
-// RunMode is Run, defaulting to RunOnce.
+// RunMode is Run, defaulting to RunOnce — and RunAlways for an unclean-boot step,
+// which runs on every unclean boot.
 func (s Step) RunMode() string {
+	if s.At == AtUncleanBoot {
+		return RunAlways
+	}
 	if s.Run == "" {
 		return RunOnce
 	}
@@ -115,8 +124,11 @@ func (s Step) Validate() error {
 	if strings.TrimSpace(s.Name) == "" {
 		return errors.New("has no name")
 	}
-	if s.At != AtSetup && s.At != AtStarted {
-		return fmt.Errorf("at %q is not %s or %s", s.At, AtSetup, AtStarted)
+	if s.At != AtSetup && s.At != AtStarted && s.At != AtUncleanBoot {
+		return fmt.Errorf("at %q is not %s, %s or %s", s.At, AtSetup, AtStarted, AtUncleanBoot)
+	}
+	if s.At == AtUncleanBoot && s.Run == RunOnce {
+		return fmt.Errorf("run %s does not apply to an %s step, which runs on every unclean boot", RunOnce, AtUncleanBoot)
 	}
 	if m := s.RunMode(); m != RunOnce && m != RunAlways {
 		return fmt.Errorf("run %q is not %s or %s", s.Run, RunOnce, RunAlways)

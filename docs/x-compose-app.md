@@ -116,7 +116,7 @@ with **every** field below set once, to show what a fully loaded block looks lik
 | **`variables`** | map | no | Templates ensured in the app's `.env` on **every** up. See [Secrets and variables](#secrets-and-variables). |
 | **`credentials`** | object[] | no | The app's **initial logins**, shown to the operator the first time the app is opened. See [Credentials](#credentials). | — (a CasaOS app gets no credentials dialog) |
 | **`files`** | object[] | no | Individual files Maison writes — the escape hatch beside the [seed tree](#the-seed-tree). See [Files](#files). |
-| **`steps`** | object[] | no | [Script entries](#the-script-entry) run around the app's stack on every up: `{ name, at: setup\|started, run: once\|always }` plus `script` or `file`. See [Steps](#steps). | `pre-install-cmd` → a `setup` step, `post-install-cmd` → a `started` step, both `run: once` |
+| **`steps`** | object[] | no | [Script entries](#the-script-entry) run around the app's stack on every up, and after an unclean stop of the server: `{ name, at: setup\|started\|unclean-boot, run: once\|always }` plus `script` or `file`. See [Steps](#steps). | `pre-install-cmd` → a `setup` step, `post-install-cmd` → a `started` step, both `run: once` |
 | **`lifecycle`** | object | no | `{ stoppable, uninstallable, updatable }`, all default `true` — whether Maison may stop, uninstall or update the app. See [Lifecycle](#lifecycle-what-the-operator-may-do-to-the-app). | — |
 | **`backup`** | object | no | `{ exclude, skip }` — directories of **derived** data to leave out of backups, or the whole app. See [Backup exclusions](#backup-exclusions) and [Skipping an app entirely](#skipping-an-app-entirely). | — |
 | **`data_version`** | int | no (default `1`) | The shape of data this compose expects. An install's data is marked with it; a start refuses data in another shape, and an update converts it with `migrations`. Read from the **base** compose only. See [`migrations.md`](./migrations.md). | — |
@@ -887,7 +887,7 @@ is a **step**: a [script entry](#the-script-entry) with a name and a place in th
 x-compose-app:
   steps:
     - name: init-db
-      at: setup                 # setup | started — required
+      at: setup                 # setup | started | unclean-boot — required
       run: always               # once (default) | always
       script: |
         [ -e "$APP_DIR/db/database.db" ] && exit 0
@@ -909,6 +909,7 @@ x-compose-app:
 |---|---|---|
 | `setup` | Before the stack starts: after `secrets`, `variables` and any migrations, before the seed tree and `files` — so what it writes to `$MAISON_OUTPUT` renders into them. | **Fatal**: the app does not start, on every up until it is fixed. Nothing flaky belongs here. |
 | `started` | After `docker compose up` returns. The containers have *started*; the app may still be booting, so a step waits for what it needs. | Logged and reported as an incident; the other started steps still run, and the step is retried on the next up. |
+| `unclean-boot` | Once after the server came back from a stop it did not shut down for — a power cut, a forced reset — as soon as the app is running (or, for an app its owner had stopped, after its started steps when it is next started). Never on an ordinary up. The app may still be booting, so a step waits for what it needs. Always `run: always`; `once` is refused. See [After an unclean stop](#after-an-unclean-stop). | Reported as a critical `app.repair-failed` incident; not retried. |
 
 | `run` | |
 |---|---|
@@ -918,6 +919,31 @@ x-compose-app:
 Steps run in the order they are declared, `setup` ones before the stack starts and
 `started` ones after. Names must be unique: a `once` marker is keyed by name.
 Restart and Stop run no steps — they are container-level, not an up.
+
+### After an unclean stop
+
+A power cut loses what the kernel had not yet written — on a PCS up to ~30 s of it —
+and an app can come back with files that exist and are empty. Maison notices such a
+stop itself (see [incidents](./incidents.md#pushed)) and runs the `unclean-boot` steps
+of each installed app once, so the app can find and repair the damage. The owner is
+told about the stop either way.
+
+The step decides what to look for, and should look cheaply: it runs on every unclean
+boot, on boxes whose data may be large. A step that repaired something writes one line
+saying what to `$MAISON_OUTPUT` as `REPAIRED=…`, in the owner's terms; that line is
+the detail of the `app.repaired` warning they receive. A step that writes nothing
+found nothing, and nobody hears about it. A step that fails raises `app.repair-failed`,
+critical — the owner's cue to restore from a backup.
+
+```yaml
+    - name: repair-after-crash
+      at: unclean-boot
+      timeout: 2h               # a repair of a large data set takes long
+      file: scripts/repair-after-crash.sh
+```
+
+A Maison that predates `unclean-boot` skips these steps, as it skips any step whose
+`at` it does not know.
 
 **Step or [migration](./migrations.md)?** A step is safe to run against any
 install at any time. A migration happens exactly once, at a version boundary,
@@ -1448,7 +1474,7 @@ three places.
 
 | In | Its own keys | Runs | On failure | Extra variables |
 |---|---|---|---|---|
-| `steps` | `name`, `at`, `run` | every up | `setup`: the app does not start. `started`: logged, retried | — |
+| `steps` | `name`, `at`, `run` | every up; `unclean-boot` once after an unclean stop | `setup`: the app does not start. `started`: logged, retried. `unclean-boot`: critical incident | — |
 | `migrations` | `id`, `name` (or `blocked`) | once, in the update that crosses `id` | the update is rolled back | `MIGRATION_ID`, `DATA_VERSION_FROM`, `DATA_VERSION_TO` |
 | `credentials[].change` | `apply: script`, `policy` | when the owner changes the password | nothing changes | `<NAME>` (the new value), `OLD_<NAME>` |
 

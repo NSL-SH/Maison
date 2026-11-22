@@ -4,7 +4,7 @@
 // x-casaos) and, in order:
 //
 //	folders → secrets → variables → [migrations] → setup steps → seed → files
-//	        → docker compose up -d → started steps
+//	        → docker compose up -d → started steps → [unclean-boot steps]
 //
 // An install is this same sequence: nothing runs only on install. Every piece of
 // app-supplied code — a step, a migration step, a credential change — is a script
@@ -203,6 +203,13 @@ func UpWith(ctx context.Context, cfg config.Config, project, dir string, files [
 	if err := RunSteps(ctx, cfg, project, dir, xcomposeapp.AtStarted, spec.Steps, outputs); err != nil {
 		log.Printf("%s: %v", project, err)
 		cfg.ReportIncident(hookIncident(project, "one of its setup steps did not complete", err))
+	}
+	// An app that was not running when the server came back from an unclean stop
+	// gets its repair now, before anything else writes to it. Reported by the run.
+	if UncleanBootPending(cfg, project) {
+		if err := RunUncleanBoot(ctx, cfg, project, dir, files); err != nil {
+			log.Printf("%s: after an unclean boot: %v", project, err)
+		}
 	}
 	return nil
 }

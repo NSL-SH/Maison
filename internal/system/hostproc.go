@@ -89,3 +89,15 @@ func isPartition(device string, all []string) bool {
 	}
 	return false
 }
+
+// ReadBootID is the kernel's random ID for the current boot. It is the host's even
+// from inside a container (the file is not namespaced), so a new value means the
+// server itself restarted, not just Maison's container.
+func ReadBootID() (string, bool) {
+	b, err := os.ReadFile(filepath.Join(hostProc(), "sys", "kernel", "random", "boot_id"))
+	if err != nil {
+		return "", false
+	}
+	id := strings.TrimSpace(string(b))
+	return id, id != ""
+}

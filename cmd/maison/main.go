@@ -13,8 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yundera/maison/internal/brand"
 	"github.com/yundera/maison/internal/appenv"
+	"github.com/yundera/maison/internal/bootstate"
+	"github.com/yundera/maison/internal/brand"
 	"github.com/yundera/maison/internal/config"
 	"github.com/yundera/maison/internal/envinject"
 	"github.com/yundera/maison/internal/server"
@@ -75,6 +76,11 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 	log.Print("shutting down")
+	// First, before anything that can take long: a server shutting down gives Docker
+	// only seconds. Without this record the next boot reads as an unclean stop.
+	if err := bootstate.MarkClean(bootstate.Path(cfg.StateDir())); err != nil {
+		log.Printf("boot: recording the clean stop: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

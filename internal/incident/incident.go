@@ -123,6 +123,15 @@ const (
 	// container, "host.oom" for kills outside every app.
 	KindAppOOM  = "app.oom"
 	KindHostOOM = "host.oom"
+
+	// The server having stopped without shutting down — a power cut, a forced reset —
+	// and what the apps found afterwards. Each unclean boot is news of its own, so the
+	// IDs carry the boot: "host.unclean-boot:<boot>", "app.repaired:<app>:<boot>". A
+	// failed repair is one per app, "app.repair-failed:<app>", closed by the next one
+	// that succeeds. The two warnings close after a day; see docs/incidents.md.
+	KindHostUncleanBoot = "host.unclean-boot"
+	KindAppRepaired     = "app.repaired"
+	KindAppRepairFailed = "app.repair-failed"
 )
 
 // Activity kinds. These are NOT incidents, and the difference is the whole of how they

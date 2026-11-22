@@ -150,6 +150,9 @@ export const KNOWN_KINDS = [
   'disk.trend',
   'app.oom',
   'host.oom',
+  'host.unclean-boot',
+  'app.repaired',
+  'app.repair-failed',
 ] as const
 
 /** Kinds judged from the recorded resource history: not sent while it is off. */

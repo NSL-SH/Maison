@@ -481,6 +481,11 @@ func New(cfg config.Config, uiFS fs.FS) http.Handler {
 	// See detect.go for what it looks at and why the list is as short as it is.
 	go s.runDetectors(context.Background())
 
+	// Whether the server stopped without shutting down, and the repairs that follow.
+	// After the registry and the incident register, which it reads and reports into.
+	s.checkBoot()
+	go s.runPendingRepairs(context.Background())
+
 	// The deployment's own way in (admin.go): the socket the `maison` CLI talks to.
 	if cfg.AdminSocket != "" {
 		s.startAdmin(cfg.AdminSocket)

@@ -115,11 +115,33 @@ what nobody is present for.
 | `app.hook:<app>` | `app.stackup` | `stackup.Up` (`.env` sync, started steps). The id keeps its historical name |
 | `app.update:<app>` | `app.update` | `installer.ApplyUpdate` — warning for "refused: it could not be backed up first" (nothing changed; `reason` is `no_room`, `backup_busy`, `backup_timeout` or `backup_failed`) and for "failed and rolled back" (the old version is running); **critical** for "the rollback failed too", "rolled back but not running" (`installer.Steady`) and "failed with no backup to undo it". Cleared by a later successful update |
 | `store.source` | `store.source` | `appstore.StartDailyRefresh`, after two consecutive failures |
+| `host.unclean-boot:<boot>` | `host.unclean-boot` | `server.checkBoot` at start, when the server stopped without shutting down (see below). Warning. Closes after 24h |
+| `app.repaired:<app>:<boot>` | `app.repaired` | `stackup.RunUncleanBoot`: the app's `unclean-boot` steps found damage and repaired it; the detail is what they wrote as `REPAIRED`. Warning. Closes after 24h |
+| `app.repair-failed:<app>` | `app.repair-failed` | `stackup.RunUncleanBoot`: an `unclean-boot` step failed. Critical. Cleared by the next run that succeeds |
 
 `internal/stackup` is package-level functions with no receiver to hang a hook on, so
 its reporter arrives as a `Report` closure on `config.Config` — the same shape as the
 `Domains` and `AppEnv` live accessors already there, and every stackup function
 already takes a `Config`.
+
+**An unclean stop is detected by Maison alone, with no host change.** At start it
+compares the kernel's `boot_id` (host-wide, readable from the container) with the one
+it stored in `boot.json`, and stores the new one as running; on SIGTERM it marks the
+record clean. A server shutting down stops Docker, which sends that SIGTERM; a power
+cut or a forced reset sends nothing. So a new boot ID on a record still marked running
+is a server that stopped without shutting down. Both writes are synced to disk — the
+record must survive the very crash it detects. A first start (no record) and an
+unreadable record are not reported. One gap is accepted: a crash while Maison itself
+was stopped looks clean.
+
+After such a boot, every installed app that declares `unclean-boot` steps gets a
+marker under `unclean-boot/` in the state folder; its steps run as soon as the app is
+running (within ten minutes of Maison starting), or from `stackup.Up` when an app the
+owner had stopped is next started. The IDs carry the boot, because each unclean boot
+is news of its own: re-asserting an open incident updates it silently, and a second
+power cut the same day must still reach the owner. The two warnings close after a day
+for the same reason `app.oom` does — they describe something that happened, and one
+that opened and closed inside a delivery window would never be mailed.
 
 The store refresh needs **two** consecutive failures because the first refresh happens
 at boot, where the commonest cause of failure is the network not being up yet. At one

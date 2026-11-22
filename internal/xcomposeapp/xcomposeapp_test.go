@@ -121,10 +121,25 @@ func TestValidateStepsRefusesAuthoringErrors(t *testing.T) {
 		"file not scripts/": {{Name: "a", At: AtSetup, Script: Script{File: "seed/a.sh"}}},
 		"bad timeout":       {{Name: "a", At: AtSetup, Script: Script{Script: "true", Timeout: "soon"}}},
 		"duplicate name":    {{Name: "a", At: AtSetup, Script: ok}, {Name: "a", At: AtStarted, Script: ok}},
+		"unclean-boot once": {{Name: "a", At: AtUncleanBoot, Run: RunOnce, Script: ok}},
 	}
 	for name, steps := range cases {
 		if errs := ValidateSteps(steps); len(errs) == 0 {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// An unclean-boot step runs after every unclean boot: it takes no `once` marker,
+// whatever run says.
+func TestUncleanBootStepRunsAlways(t *testing.T) {
+	for _, run := range []string{"", RunAlways} {
+		s := Step{Name: "repair", At: AtUncleanBoot, Run: run, Script: Script{Script: "true"}}
+		if err := s.Validate(); err != nil {
+			t.Fatalf("run %q: %v", run, err)
+		}
+		if s.RunMode() != RunAlways {
+			t.Fatalf("run %q: mode %q, want %q", run, s.RunMode(), RunAlways)
 		}
 	}
 }
