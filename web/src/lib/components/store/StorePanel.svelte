@@ -87,32 +87,22 @@
     category === 'All' && developer === 'All' && store === 'All' && !search.trim(),
   )
 
-  /** True for an app that declares a parent shipped by the same store.
-   *
-   *  The parent has to be in that store: an install takes the copy the tile belongs
-   *  to, so an extension whose parent lives somewhere else has nothing to be folded
-   *  under here and stays an ordinary catalog app — the same fallback the dashboard
-   *  makes for a parent it cannot resolve. */
-  const isExtension = (a: StoreApp): boolean =>
-    !!a.parent && (data?.apps ?? []).some((p) => p.store === a.store && p.id === a.parent)
-
   // Everything matching the toolbar, across every store. The store is NOT filtered
   // here — it decides which *group* an app lands in, below.
   //
-  // Extensions are folded out of the grid and listed on their parent's page
-  // instead — but only while browsing. Once something is typed the person is
-  // looking for a named app, and a search that cannot find an installable app
-  // because of a presentation rule is a search that is simply wrong.
+  // An extension (an app declaring a `parent`) is an ordinary catalog app here:
+  // many work without their parent (a Stremio add-on serves any Stremio client),
+  // so folding them out of the grid would hide installable apps. The link between
+  // the two lives on the detail pages only (AppDetail: "Extends" / Extensions).
   //
-  // An app this box cannot run is left out too, unless Settings › App stores says
-  // to list them (show_unsupported_apps, a box setting) — and,
-  // for the same reason as extensions, never from a search: someone typing
-  // "minecraft" on a tunnelled box should find it greyed out with the reason, not
+  // An app this box cannot run is left out, unless Settings › App stores says
+  // to list them (show_unsupported_apps, a box setting) — and never from a
+  // search, because a search that cannot find an installable app is simply
+  // wrong: someone typing "minecraft" on a tunnelled box should find it greyed out with the reason, not
   // conclude the store has no such app.
   const matching = $derived.by(() => {
     const q = search.trim().toLowerCase()
     return (data?.apps ?? []).filter((a) => {
-      if (!q && isExtension(a)) return false
       if (category !== 'All' && a.category !== category) return false
       if (developer !== 'All' && a.developer !== developer) return false
       if (q && !`${$loc(a.title, a.name)} ${a.name} ${$loc(a.tagline)} ${a.category}`.toLowerCase().includes(q)) return false

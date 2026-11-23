@@ -1099,11 +1099,14 @@ x-compose-app:
 ```
 
 An app with a resolvable `parent` is an **extension**. It gets no top-level tile
-of its own: the dashboard nests it under the parent's tile, and the store shows
-it in an *Extensions* section on the parent's detail page rather than loose in
-the catalog. There is no extensions grid and no `view` value for it — "which grid"
-and "attached to what" are different questions, and only the second one has an
-answer worth showing the operator.
+of its own: the dashboard nests it under the parent's tile. The store does not
+fold it away: it stays an ordinary app in the catalog, installed or not, since
+many extensions work without their parent (a Stremio add-on serves any Stremio
+client). The store only links the two: the extension's detail page names the app
+it extends, and the parent's lists it under *Extensions*. There is no extensions
+grid and no `view` value for it — "which grid" and "attached to what" are
+different questions, and only the second one has an answer worth showing the
+operator.
 
 Whether an app is an extension is the **maintainer's call**, exactly as `view`
 is. Maison does not infer it from shared volumes, networks or naming.
