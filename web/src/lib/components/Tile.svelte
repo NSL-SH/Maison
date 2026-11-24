@@ -309,8 +309,12 @@
         ontoggleextensions?.()
       }}
     >
-      {tile.kind === 'app' && tile.expanded ? '⌃' : '⌄'}
-      {extensions}
+      <span class="count">{extensions}</span>
+      <!-- Points the way the extensions unfold (into the cells after this one) and
+           turns round to fold them back. -->
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 6l6 6-6 6" />
+      </svg>
     </button>
   {/if}
 
@@ -632,26 +636,53 @@
   }
   /* Bottom-right: the only free corner — the health dot is top-left, the burger
      top-right and the "unmanaged" badge bottom-left. */
+  /* Same frosted pill as the burger, so the two corner controls read as a pair.
+     Always shown, not hover-revealed: a touch screen has no hover. */
   .ext {
     position: absolute;
-    bottom: 0.4rem;
+    bottom: 0.5rem;
     right: 0.5rem;
-    z-index: 2;
+    z-index: 3;
     display: flex;
     align-items: center;
-    gap: 0.15rem;
+    gap: 0.2rem;
+    height: 1.4rem;
+    min-width: 1.4rem;
+    padding: 0 0.3rem 0 0.5rem;
     border: none;
+    border-radius: var(--r-pill);
+    background: rgb(0 0 0 / 0.25);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #fff;
     cursor: pointer;
     font: inherit;
-    font-size: 0.65rem;
-    line-height: 1.5;
-    color: var(--grey-100);
-    background: rgba(0, 0, 0, 0.35);
-    border-radius: 4px;
-    padding: 0 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+    transition:
+      background var(--dur-fast) var(--ease-ios),
+      transform var(--dur-fast) var(--ease-ios);
   }
   .ext:hover {
-    background: rgba(0, 0, 0, 0.55);
+    background: rgb(0 0 0 / 0.4);
+  }
+  .ext:active {
+    transform: scale(0.92);
+  }
+  /* Unfolded: tinted with the accent, the one hint tying this tile to the
+     smaller cards that follow it. */
+  .ext[aria-expanded='true'] {
+    background: var(--primary);
+  }
+  .ext .count {
+    font-variant-numeric: tabular-nums;
+  }
+  .ext svg {
+    transition: transform var(--dur) var(--ease-ios);
+  }
+  .ext[aria-expanded='true'] svg {
+    transform: rotate(180deg);
   }
   /* An extension keeps its cell but draws a smaller, dimmer card inside it, so an
      unfolded row reads as one app followed by its extensions rather than as three
