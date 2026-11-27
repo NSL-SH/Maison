@@ -15,6 +15,7 @@ import (
 	"github.com/yundera/maison/internal/brand"
 	"github.com/yundera/maison/internal/composefile"
 	"github.com/yundera/maison/internal/config"
+	"github.com/yundera/maison/internal/domains"
 	"github.com/yundera/maison/internal/envinject"
 	"github.com/yundera/maison/internal/incident"
 	"github.com/yundera/maison/internal/routes"
@@ -116,7 +117,8 @@ func aliasIncidentID(project string) string { return "app.address.alias:" + proj
 // What could not be published is one warning incident for the app, cleared by the
 // next up that publishes every alias (or has none).
 func withAliases(cfg config.Config, s routing.Setting, d dialect.Dialect, project string, base, override []byte, entries []routing.Entry, resolve routing.Resolver) ([]routing.Entry, []routing.Entry) {
-	aliases := routing.Aliases(resolvedApp(base, override))
+	app := resolvedApp(base, override)
+	aliases := routing.Aliases(app)
 	if len(aliases) == 0 {
 		cfg.ResolveIncident(aliasIncidentID(project))
 		return entries, nil
@@ -124,7 +126,7 @@ func withAliases(cfg config.Config, s routing.Setting, d dialect.Dialect, projec
 	rts := appRoutes(project, base)
 	table := entries
 	if len(rts) == 0 && s.Renderer == routing.Labels && len(s.Domains) > 0 {
-		rts = primaryFirst(routes.ClonedRoutes(base, d, s.Domains[0]), aliases)
+		rts = primaryFirst(webUIFirst(routes.ClonedRoutes(base, d, s.Domains), app, s.Domains), aliases)
 		table = routing.Table(rts, s, resolve, nil)
 	}
 	all, errs := routing.WithAliases(table, rts, aliases, s, resolve, claimedHosts(cfg, project, s, d, resolve))
@@ -153,6 +155,32 @@ func withAliases(cfg config.Config, s routing.Setting, d dialect.Dialect, projec
 		}
 	}
 	return all, only
+}
+
+// webUIFirst moves the route the listing's `webui-host` names to the front of a
+// clone-mode table, so that "the app's first route" — what an alias with no
+// `route` answers for — is its web UI, not whichever service's labels the
+// compose file happens to list first. MetaListenShared declares its search
+// sidecar before the app, and `listen` went to the sidecar.
+func webUIFirst(rts []routing.Route, app *xcomposeapp.App, doms []domains.Domain) []routing.Route {
+	if len(rts) < 2 || app == nil || strings.TrimSpace(app.WebUIHost) == "" {
+		return rts
+	}
+	host := strings.ReplaceAll(strings.TrimSpace(app.WebUIHost), "${domain}", "${APP_DOMAIN}")
+	for _, dom := range doms {
+		name, ok := dom.NameOf(host)
+		if !ok {
+			continue
+		}
+		for i, r := range rts {
+			if r.Name == name && i > 0 {
+				out := append([]routing.Route{r}, rts[:i]...)
+				return append(out, rts[i+1:]...)
+			}
+		}
+		return rts
+	}
+	return rts
 }
 
 // primaryFirst moves the route a primary alias takes over to the front of a clone-
@@ -231,7 +259,7 @@ func claimedHosts(cfg config.Config, project string, s routing.Setting, d dialec
 		claim(id, strings.ToLower(id))
 		rts := appRoutes(id, base)
 		if len(rts) == 0 && len(s.Domains) > 0 {
-			rts = routes.ClonedRoutes(base, d, s.Domains[0])
+			rts = routes.ClonedRoutes(base, d, s.Domains)
 		}
 		for _, r := range rts {
 			claim(id, r.Name)

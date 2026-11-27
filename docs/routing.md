@@ -225,7 +225,7 @@ x-compose-app:
 | Key | Meaning |
 |---|---|
 | `name` | The alias, in the route name's place in each domain's host template: `watch` on `{name}.${APP_DOMAIN}` is `watch.${APP_DOMAIN}`. A lowercase DNS label. |
-| `route` | The route it answers for: a declared route's name or, for a listing that routes itself, the name its group has on the primary domain (`metawatch` for `metawatch-${APP_DOMAIN}`). Empty: the app's first route. |
+| `route` | The route it answers for: a declared route's name or, for a listing that routes itself, the name its group has on the domain its host is written for (`metawatch` for `metawatch-${APP_DOMAIN}`). Empty: the app's first route — for a listing that routes itself, the one its `webui-host` names. |
 | `domains` | The routing setting's domain names to publish it on. Empty: every domain. |
 | `primary` | The alias becomes the route's address, on the first of its domains in the setting's order: the tile opens it, and the route's URL variable (`APP_URL` for the first route) names it. It is also listed first in `APP_URLS`. |
 
@@ -237,7 +237,10 @@ list includes `{name}.${APP_DOMAIN}` means every subdomain of the box. An alias 
 how a name gets there and stays.
 
 For a listing that routes itself (clone mode) the alias is the listing's group
-cloned once more under the alias's host. Such an app is not told its address
+cloned once more under the alias's host. The group is read on whichever domain its
+host is written for — store listings label themselves `<name>-${APP_DOMAIN}`, which
+is not the first domain on a box whose primary form is the dot one — and is cloned
+onto every other domain from there. Such an app is not told its address
 otherwise, but one with aliases gets the full set of address variables for its
 routes, the aliased-primary route first, so `BASE_URL: ${APP_URL}` follows the alias.
 

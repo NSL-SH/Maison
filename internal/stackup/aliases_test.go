@@ -149,6 +149,73 @@ func removeAliases(t *testing.T, override string) string {
 
 // A hand-written group on the dot domain is still swept: the sweep is what keeps
 // that namespace Maison's, and aliases are the way to put a name there.
+// metastar's real setting lists the dot domain FIRST, while the listing labels
+// itself in the gateway form. The route must still be found, and the alias
+// published — before this, every alias on the box was refused with "the app has
+// no route an alias could answer for".
+func TestAliasPublishedWhenTheListingIsNotOnTheFirstDomain(t *testing.T) {
+	cfg, reports, _ := metastarBox(t)
+	cfg.Routing = func() routing.Setting {
+		return routing.Setting{Renderer: routing.Labels, Dialect: "caddy", Domains: []domains.Domain{
+			{Name: "dot", Domain: "{name}.${APP_DOMAIN}"},
+			{Name: "gateway", Domain: "{name}-${APP_DOMAIN}", Labels: map[string]string{"import": "gateway_tls"}},
+			{Name: "sslip", Domain: "{name}-${APP_PUBLIC_IP_DASH}.sslip.io"},
+		}}
+	}
+	dir := installApp(t, cfg, "metawatch", clonedWatch, watchAliasOverride)
+	out, vars := syncApp(t, cfg, "metawatch", dir)
+	for _, want := range []string{": watch.${APP_DOMAIN}", ": metawatch.${APP_DOMAIN}"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q (the listing's group, cloned onto the dot domain):\n%s", want, out)
+		}
+	}
+	if got := vars["APP_URL"]; got != "https://watch.box.example.com" {
+		t.Errorf("APP_URL = %q, want the primary alias", got)
+	}
+	if len(*reports) != 0 {
+		t.Errorf("unexpected incident: %+v", *reports)
+	}
+}
+
+// A listing whose sidecar is declared before the app (MetaListenShared puts its
+// search service first): an alias with no `route` answers for the web UI that
+// `webui-host` names, not for the first label group in the file.
+func TestAliasDefaultsToTheWebUIRouteNotTheFirstService(t *testing.T) {
+	const listing = `name: metalisten
+services:
+  metalisten-search:
+    image: example/meta-search:1
+    labels:
+      caddy_0: metalistensearch-${APP_DOMAIN}
+      caddy_0.reverse_proxy: "{{upstreams 3000}}"
+  metalisten-app:
+    image: example/meta-listen:1
+    labels:
+      caddy_0: metalisten-${APP_DOMAIN}
+      caddy_0.reverse_proxy: "{{upstreams 3000}}"
+x-compose-app:
+  webui-host: metalisten-${domain}
+`
+	cfg, reports, _ := metastarBox(t)
+	dir := installApp(t, cfg, "metalisten", listing, `x-compose-app:
+  aliases:
+    - { name: listen, domains: [dot], primary: true }
+`)
+	out, vars := syncApp(t, cfg, "metalisten", dir)
+	if !strings.Contains(out, "alias listen for metalisten on dot") {
+		t.Errorf("alias went to the wrong route:\n%s", out)
+	}
+	if strings.Contains(out, "alias listen for metalistensearch") {
+		t.Errorf("alias answered for the sidecar:\n%s", out)
+	}
+	if got := vars["APP_URL"]; got != "https://listen.box.example.com" {
+		t.Errorf("APP_URL = %q, want the primary alias", got)
+	}
+	if len(*reports) != 0 {
+		t.Errorf("unexpected incident: %+v", *reports)
+	}
+}
+
 func TestHandWrittenDotLabelIsStillSwept(t *testing.T) {
 	cfg, _, _ := metastarBox(t)
 	dir := installApp(t, cfg, "metawatch", clonedWatch, `services:

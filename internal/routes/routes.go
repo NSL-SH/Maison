@@ -193,8 +193,8 @@ func renderLabels(baseRoot, overRoot *yaml.Node, p Plan, resolve Resolver, manif
 	}
 }
 
-// cloneLabels copies every group an app's own labels put on the primary domain onto
-// each further domain. A route group can be an entire handle_path tree or carry
+// cloneLabels copies every group an app's own labels put on one of the domains
+// (whichever its host is written for — see domainOf) onto each other domain. A route group can be an entire handle_path tree or carry
 // transport settings, and it has to keep working on the second domain, so the whole
 // group is copied — except what the dialect says belongs to the domain (TLS).
 //
@@ -205,7 +205,6 @@ func cloneLabels(baseRoot, overRoot *yaml.Node, p Plan, resolve Resolver, manife
 	if len(p.Domains) < 2 && len(p.Aliases) == 0 {
 		return
 	}
-	primary := p.Domains[0]
 	baseSvcs := yamlnode.Get(baseRoot, "services")
 	for _, svc := range yamlnode.Keys(baseSvcs) {
 		baseLabels := labelPairs(yamlnode.Get(yamlnode.Get(baseSvcs, svc), "labels"))
@@ -218,12 +217,21 @@ func cloneLabels(baseRoot, overRoot *yaml.Node, p Plan, resolve Resolver, manife
 		next := dialect.NextIndex(p.Dialect, baseLabels, overLabels)
 
 		var written []string
+		seen := map[string]bool{}
 		for _, g := range groups {
-			name, ok := primary.NameOf(primaryHost(g.Host))
-			if !ok {
-				continue // not a route on the primary domain — nothing to republish
+			// The group's OWN domain, read off its host — not the setting's
+			// first. Store listings label themselves `<name>-${APP_DOMAIN}`
+			// (the dash form) while a box's primary form is the dot one by
+			// default, so assuming the first domain found nothing to clone.
+			own, name, ok := domainOf(primaryHost(g.Host), p.Domains)
+			if !ok || seen[name] {
+				continue // not a route on any domain, or a group of a name already cloned
 			}
-			for _, d := range p.Domains[1:] {
+			seen[name] = true
+			for _, d := range p.Domains {
+				if d.Name == own.Name {
+					continue
+				}
 				host := d.Host(name)
 				if routed[resolve(host)] {
 					continue
@@ -261,11 +269,11 @@ func entryNote(e routing.Entry) string {
 }
 
 // ClonedRoutes are the routes a listing with no `routes` carries as its own
-// labels: one per group on the primary domain, named as the domain reads its host
+// labels: one per group on any of doms, named as its domain reads its host
 // back (`metawatch` for `metawatch-${APP_DOMAIN}`), on the service that carries it.
 // They are what an alias of such an app names. Port and the rest are unknown and
 // unneeded: the group itself is what gets cloned.
-func ClonedRoutes(base []byte, d dialect.Dialect, primary domains.Domain) []routing.Route {
+func ClonedRoutes(base []byte, d dialect.Dialect, doms []domains.Domain) []routing.Route {
 	if d == nil {
 		return nil
 	}
@@ -279,7 +287,7 @@ func ClonedRoutes(base []byte, d dialect.Dialect, primary domains.Domain) []rout
 	for _, svc := range yamlnode.Keys(svcs) {
 		labels := labelPairs(yamlnode.Get(yamlnode.Get(svcs, svc), "labels"))
 		for _, g := range dialect.Groups(d, labels) {
-			name, ok := primary.NameOf(primaryHost(g.Host))
+			_, name, ok := domainOf(primaryHost(g.Host), doms)
 			if !ok || seen[name] {
 				continue
 			}
@@ -288,6 +296,19 @@ func ClonedRoutes(base []byte, d dialect.Dialect, primary domains.Domain) []rout
 		}
 	}
 	return out
+}
+
+// domainOf is the domain a label group's host is written for, and the route name
+// that host carries on it: the first of doms whose template reads the host back.
+// The templates are disjoint (`{name}.${APP_DOMAIN}`, `{name}-${APP_DOMAIN}`, the
+// IP forms), so at most one ever matches.
+func domainOf(host string, doms []domains.Domain) (domains.Domain, string, bool) {
+	for _, d := range doms {
+		if name, ok := d.NameOf(host); ok {
+			return d, name, true
+		}
+	}
+	return domains.Domain{}, "", false
 }
 
 // primaryHost reads the store's other spelling of the primary domain as the one
