@@ -66,6 +66,9 @@ export interface App {
   /** True while a lifecycle op (start/stop/restart/uninstall) is in flight:
    *  the tile shows a "…" overlay and hides its burger menu. */
   busy?: boolean
+  /** The app is still up while the backup or update in flight runs (a backup's live
+   *  pass, an update's checks and pull): the tile stays usable. Set by the server. */
+  serving?: boolean
   /** True while a store install is in flight for this app: the tile shows a
    *  progress bar (download, then start) instead of being clickable. */
   installing?: boolean
@@ -150,6 +153,7 @@ function persistApps(list: App[]): void {
     const clean = list.map((a) => {
       const c: App = { ...a }
       delete c.busy
+      delete c.serving
       delete c.installing
       delete c.download
       delete c.start

@@ -207,11 +207,7 @@ func decode(out []byte, emit func(apps.Event)) (json.RawMessage, error) {
 			if emit == nil {
 				continue
 			}
-			ev := apps.Event{Message: l.Message, Done: l.Done, Total: l.Total, Pct: apps.PctUnknown}
-			if l.Pct != nil {
-				ev.Pct = *l.Pct
-			}
-			emit(ev)
+			emit(progressEvent(l))
 		case typeLog:
 			logLine(l)
 		case typeResult:
@@ -222,6 +218,31 @@ func decode(out []byte, emit func(apps.Event)) (json.RawMessage, error) {
 		}
 	}
 	return result, nil
+}
+
+// progressEvent is the apps.Event a progress line stands for.
+func progressEvent(l line) apps.Event {
+	ev := apps.Event{Message: l.Message, Done: l.Done, Total: l.Total, Pct: apps.PctUnknown}
+	if l.Pct != nil {
+		ev.Pct = *l.Pct
+	}
+	return ev
+}
+
+// emitProgressLine decodes one stdout line as it arrives and, if it is a progress
+// line, hands it to emit. Anything else — the result, a log line, a stray non-JSON
+// line — is left for decode, which reads the whole of stdout once the verb exits.
+// Splitting it this way is what makes progress live: decode alone would deliver every
+// progress line in one burst after the engine had already finished.
+func emitProgressLine(raw string, emit func(apps.Event)) {
+	if emit == nil {
+		return
+	}
+	var l line
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &l); err != nil || l.Type != typeProgress {
+		return
+	}
+	emit(progressEvent(l))
 }
 
 // unmarshalResult decodes a verb's payload, treating an absent result as a protocol

@@ -77,8 +77,15 @@
   const failureLabel = $derived(
     tile.kind === 'app' && tile.app.install_error ? 'install_failed' : 'uninstall_failed',
   )
-  // While installing or uninstalling the tile is not clickable.
-  const locked = $derived(busy || progressing)
+  // An operation is in flight on this app: its menu stays hidden until it settles,
+  // so nobody stops or restarts an app halfway through an update or a backup.
+  const operating = $derived(busy || progressing)
+  // The app is still up while that operation runs — a backup's live pass, an
+  // update's checks, pull and live backup pass. The server says so per phase.
+  const serving = $derived(tile.kind === 'app' && tile.app.serving === true)
+  // Greyed and not clickable only while the operation actually has the app down.
+  // While it serves, the tile keeps its colour and opens the app, bar still showing.
+  const locked = $derived(operating && !serving)
   // An app is openable only when we can build a click URL for it. Apps without a
   // reachable address (no gateway route and no published port) can't be opened —
   // the tile is greyed and its click is disabled. Stopped apps that DO have a URL
@@ -160,7 +167,7 @@
 >
   <div class="glass"></div>
 
-  {#if tile.kind !== 'system' && !locked && !$moveMode}
+  {#if tile.kind !== 'system' && !operating && !$moveMode}
     <button
       class="burger"
       class:alert={!!failure}
@@ -174,11 +181,11 @@
     </button>
   {/if}
 
-  {#if busy && !progressing}
+  {#if busy && !progressing && !serving}
     <span class="spinner" title="Working…">…</span>
   {/if}
 
-  {#if menuOpen && !locked && !$moveMode}
+  {#if menuOpen && !operating && !$moveMode}
     <div class="menu popover" use:clickOutside={() => (menuOpen = false)}>
       <!-- A failed install or uninstall is explained here, not in a tooltip: a touch
            screen never shows a tooltip, and the PWA is mostly touch. It sits in the

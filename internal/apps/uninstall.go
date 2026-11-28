@@ -441,14 +441,14 @@ func (r *Registry) uninstallApp(ctx context.Context, id string, uo *UninstallOpt
 
 		emit(UninstallEvent{Phase: PhaseBackup, Message: "Backing up " + id, Backup: lo})
 		if err := p.Snapshot(downCtx, id, stamp, opts, func(ev Event) {
-			emit(UninstallEvent{Phase: PhaseBackup, Message: ev.Message, Backup: scale(ev.Pct)})
+			emit(UninstallEvent{Phase: PhaseBackup, Message: ev.Message, Backup: scale(measuredPct(ev))})
 		}); err != nil {
 			r.rollBackArchives(ctx, id, stamp, ordered, committed)
 			return "", fmt.Errorf("back up app to %s: %w", p.ID(), archiveHint(err, p.ID()))
 		}
 
 		b, err := p.Commit(downCtx, id, stamp, opts, func(ev Event) {
-			emit(UninstallEvent{Phase: PhaseArchive, Message: ev.Message, Backup: 100, Archive: scale(ev.Pct)})
+			emit(UninstallEvent{Phase: PhaseArchive, Message: ev.Message, Backup: 100, Archive: scale(measuredPct(ev))})
 		})
 		if err != nil {
 			r.rollBackArchives(ctx, id, stamp, ordered, committed)

@@ -63,14 +63,17 @@ func (p *Provider) callRaw(ctx context.Context, timeout time.Duration, emit func
 		Entrypoint:      p.desc.entrypoint(),
 	}
 
-	// Progress arrives on stdout as NDJSON, not on stderr, so the runner's line callback
-	// is left nil and the whole of stdout is decoded below. That is the difference from
-	// an engine driven directly: an adapter frames its own progress.
-	out, runErr := p.runner.Run(ctx, spec, nil)
+	// Progress arrives on stdout as NDJSON, not on stderr — the difference from an
+	// engine driven directly: an adapter frames its own progress. It is decoded line by
+	// line AS IT ARRIVES, so the tile's bar moves while the engine works; the result
+	// (and log lines) are decoded from the whole of stdout below, once the verb exits.
+	// Waiting for the exit to read progress too is what left an update's backup bar on
+	// 0% for the whole pass and then jumping to 100%.
+	out, runErr := p.runner.RunStream(ctx, spec, nil, func(l string) { emitProgressLine(l, emit) })
 
-	// Decoded even on failure: an engine that reported progress and then failed has
-	// still told the user how far it got, and the result line may carry detail.
-	raw, decErr := decode(out, emit)
+	// Decoded even on failure, for the result line's detail. Progress is not
+	// re-emitted: it already went out live above.
+	raw, decErr := decode(out, nil)
 	if runErr != nil {
 		return raw, classify(runErr)
 	}

@@ -416,8 +416,17 @@ func sortedKeys(m map[string]string) []string {
 // a freshly provisioned box, a crashed engine and an engine mid-upgrade all working,
 // and it is why the one-shot path stays even once every box has a resident engine.
 func (r *Runner) Run(ctx context.Context, s Spec, onLine func(string)) ([]byte, error) {
+	return r.RunStream(ctx, s, onLine, nil)
+}
+
+// RunStream is Run with stdout also delivered line by line to onOut as it arrives,
+// on top of being returned whole at the end. It exists for an engine that frames its
+// own progress on stdout (an adapter speaking NDJSON): read only once the command has
+// exited, that progress reaches the tile as one burst at 100%, which is the same as
+// having none. onOut may be nil, which is Run.
+func (r *Runner) RunStream(ctx context.Context, s Spec, onLine, onOut func(string)) ([]byte, error) {
 	if s.Container != "" && r.residentUsable(ctx, s) {
-		out, err := r.runOnce(ctx, s, true, onLine)
+		out, err := r.runOnce(ctx, s, true, onLine, onOut)
 		if !errors.Is(err, errResidentUnavailable) {
 			return out, err
 		}
@@ -427,7 +436,7 @@ func (r *Runner) Run(ctx context.Context, s Spec, onLine func(string)) ([]byte, 
 		log.Printf("engine: %v; falling back to a one-shot container", err)
 		r.forgetResident(s)
 	}
-	return r.runOnce(ctx, s, false, onLine)
+	return r.runOnce(ctx, s, false, onLine, onOut)
 }
 
 // errResidentUnavailable marks an exec that never started because the resident
@@ -459,7 +468,7 @@ func residentGone(stderr string) bool {
 }
 
 // runOnce is a single attempt in a single mode.
-func (r *Runner) runOnce(ctx context.Context, s Spec, useExec bool, onLine func(string)) ([]byte, error) {
+func (r *Runner) runOnce(ctx context.Context, s Spec, useExec bool, onLine, onOut func(string)) ([]byte, error) {
 	build := Argv
 	if useExec {
 		build = ExecArgv
@@ -514,7 +523,13 @@ func (r *Runner) runOnce(ctx context.Context, s Spec, useExec bool, onLine func(
 	}()
 
 	var out bytes.Buffer
-	_, copyErr := io.Copy(&out, stdout)
+	var sink io.Writer = &out
+	lw := &lineWriter{onLine: onOut}
+	if onOut != nil {
+		sink = io.MultiWriter(&out, lw)
+	}
+	_, copyErr := io.Copy(sink, stdout)
+	lw.flush()
 	<-scanned
 	waitErr := cmd.Wait()
 
@@ -719,3 +734,43 @@ func (l *lastLines) add(s string) {
 }
 
 func (l *lastLines) String() string { return strings.Join(l.lines, "; ") }
+
+// lineWriter hands each complete line written to it to onLine, holding a partial
+// line back until its newline (or flush) arrives. Lines are trimmed and blank ones
+// dropped, the same as the stderr scanner does.
+type lineWriter struct {
+	onLine func(string)
+	buf    []byte
+}
+
+func (w *lineWriter) Write(p []byte) (int, error) {
+	if w.onLine == nil {
+		return len(p), nil
+	}
+	w.buf = append(w.buf, p...)
+	for {
+		i := bytes.IndexByte(w.buf, '\n')
+		if i < 0 {
+			break
+		}
+		w.emit(w.buf[:i])
+		w.buf = w.buf[i+1:]
+	}
+	return len(p), nil
+}
+
+func (w *lineWriter) flush() {
+	if len(w.buf) > 0 {
+		w.emit(w.buf)
+		w.buf = nil
+	}
+}
+
+func (w *lineWriter) emit(b []byte) {
+	if w.onLine == nil {
+		return
+	}
+	if line := strings.TrimSpace(string(b)); line != "" {
+		w.onLine(line)
+	}
+}

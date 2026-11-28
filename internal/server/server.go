@@ -398,8 +398,9 @@ func New(cfg config.Config, uiFS fs.FS) http.Handler {
 				if ev.Phase == apps.PhaseSync {
 					msg = "Final sync (the app is stopped)"
 				}
-				report(installer.UpdateState{Message: msg, Pct: pct, Done: ev.Done, Total: ev.Total,
-					Rate: p.Rate, ETA: int(p.ETA.Seconds())})
+				report(installer.UpdateState{Message: msg, Pct: updateBackupPct(ev.Phase, pct),
+					Done: ev.Done, Total: ev.Total, Rate: p.Rate, ETA: int(p.ETA.Seconds()),
+					Serving: ev.Serving()})
 			}
 			res, err := s.apps.BackupTo(ctx, targets, project, false, emit)
 			if err != nil {
@@ -750,6 +751,21 @@ func (s *Server) listApps(ctx context.Context) []apps.App {
 	return list
 }
 
+// updateBackupPct folds a backup's per-pass percentage into one bar for the update's
+// backup step, so it fills once instead of running 0→100 for the live pass and then
+// again for the stopped one. The live pass is the long one and gets most of the bar.
+func updateBackupPct(phase string, pct float64) float64 {
+	switch phase {
+	case apps.PhaseCopy:
+		return pct * 0.8
+	case apps.PhaseSync:
+		return 80 + pct*0.15
+	case apps.PhaseCompress:
+		return 95 + pct*0.05
+	}
+	return pct
+}
+
 // overlayUpdates stamps update progress onto matching tiles. An update only runs on
 // an installed app, so there is never a placeholder to append.
 func overlayUpdates(list []apps.App, updates []installer.UpdateState) []apps.App {
@@ -773,6 +789,7 @@ func overlayUpdates(list []apps.App, updates []installer.UpdateState) []apps.App
 		list[i].UpdateTotal = st.Total
 		list[i].UpdateRate = st.Rate
 		list[i].UpdateETA = st.ETA
+		list[i].Serving = st.Serving
 	}
 	return list
 }
@@ -884,6 +901,7 @@ func overlayBackups(list []apps.App, backups []apps.BackupState) []apps.App {
 		list[i].Compress = st.Compress
 		list[i].Phase = st.Phase
 		list[i].BackupError = st.Error
+		list[i].Serving = st.Serving && st.Phase != apps.PhaseError
 		list[i].BackupDone = st.Done
 		list[i].BackupTotal = st.Total
 		list[i].BackupRate = st.Rate

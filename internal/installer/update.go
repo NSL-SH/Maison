@@ -183,7 +183,7 @@ func (in *Installer) ApplyUpdate(ctx context.Context, project string, opts Updat
 	// bar goes away however the update ends.
 	defer in.endUpdate(project)
 	step := func(phase, msg string, pct float64) {
-		in.setUpdate(project, UpdateState{Phase: phase, Message: msg, Pct: pct})
+		in.setUpdate(project, UpdateState{Phase: phase, Message: msg, Pct: pct, Serving: servingPhase(phase)})
 	}
 
 	// Which data the new version expects, against which data the app holds — read

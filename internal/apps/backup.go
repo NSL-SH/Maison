@@ -87,6 +87,23 @@ type BackupEvent struct {
 	Engines     int    `json:"engines,omitempty"`
 }
 
+// Serving reports whether the app is still up and usable at this point of a backup:
+// true through the live pass (PhaseCopy, which is also where images are pulled),
+// false from the stop onwards. The tile uses it to stay clickable while the app
+// serves — greying it for the whole backup told people a working app was down.
+func (ev BackupEvent) Serving() bool { return ev.Phase == PhaseCopy }
+
+// measuredPct is an engine Event's percentage, or one derived from its byte counts
+// when the engine reported only those. Kopia, for one, prints a percentage only once
+// it has estimated the total; before that every line is bytes alone, and a bar fed
+// PctUnknown for them sits on 0% for the whole pass.
+func measuredPct(ev Event) float64 {
+	if ev.Pct >= 0 {
+		return ev.Pct
+	}
+	return pctOf(ev.Done, ev.Total)
+}
+
 // BackupState is a snapshot of one in-flight (or failed) backup or restore. The
 // server overlays it onto the app's tile so the progress survives a reload and
 // rides the live app list, exactly like UninstallState does.
@@ -102,6 +119,9 @@ type BackupState struct {
 	Rate     float64 `json:"rate"`     // bytes/second, 0 = unknown
 	ETA      int     `json:"eta"`      // seconds left in this phase, 0 = unknown
 	Error    string  `json:"error"`    // set when Phase == error
+	// Serving is true while the app is still up through the operation (the live
+	// pass of a backup), so the tile stays usable. See BackupEvent.Serving.
+	Serving bool `json:"serving"`
 }
 
 // Estimate is the up-front answer to "can this app be backed up right now",
@@ -442,6 +462,7 @@ func (r *Registry) trackBackup(id string, extra func(BackupEvent)) func(BackupEv
 			st.Phase, st.Message = ev.Phase, ev.Message
 			st.Copy, st.Sync, st.Compress = ev.Copy, ev.Sync, ev.Compress
 			st.Done, st.Total, st.Rate, st.ETA = ev.Done, ev.Total, ev.Rate, ev.ETA
+			st.Serving = ev.Serving()
 		}
 		r.mu.Unlock()
 		r.progressed()
@@ -517,7 +538,7 @@ func (r *Registry) beginBackup(id string) error {
 	if st := r.backups[id]; st != nil && st.Phase != PhaseError {
 		return fmt.Errorf("%s: %w", id, ErrBackupInFlight)
 	}
-	r.backups[id] = &BackupState{ID: id, Phase: PhaseCopy, Message: "Queued"}
+	r.backups[id] = &BackupState{ID: id, Phase: PhaseCopy, Message: "Queued", Serving: true}
 	return nil
 }
 
@@ -719,7 +740,7 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 		}
 		emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseCopy, Message: "Copying " + id}))
 		if err := p.Snapshot(ctx, id, stamp, opts, func(ev Event) {
-			emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseCopy, Message: ev.Message, Copy: ev.Pct,
+			emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseCopy, Message: ev.Message, Copy: measuredPct(ev),
 				Done: ev.Done, Total: ev.Total}))
 		}); err != nil {
 			res[i].Err = fmt.Errorf("copy app folder: %w", err)
@@ -785,7 +806,7 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 		}
 		emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseSync, Message: "Syncing changes", Copy: 100}))
 		if err := p.Snapshot(downCtx, id, stamp, opts, func(ev Event) {
-			emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseSync, Message: ev.Message, Copy: 100, Sync: ev.Pct,
+			emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseSync, Message: ev.Message, Copy: 100, Sync: measuredPct(ev),
 				Done: ev.Done, Total: ev.Total}))
 		}); err != nil {
 			res[i].Err = fmt.Errorf("sync app folder: %w", err)
@@ -795,7 +816,7 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 		b, err := p.Commit(downCtx, id, stamp, opts, func(ev Event) {
 			emit(r.engineEvent(ps, i, BackupEvent{
 				Phase: PhaseCompress, Message: ev.Message,
-				Copy: 100, Sync: 100, Compress: ev.Pct,
+				Copy: 100, Sync: 100, Compress: measuredPct(ev),
 				Done: ev.Done, Total: ev.Total,
 			}))
 		})
@@ -834,7 +855,12 @@ func (r *Registry) engineEvent(ps []Provider, i int, ev BackupEvent) BackupEvent
 	}
 	ev.Engine = ps[i].ID()
 	ev.EngineIndex, ev.Engines = i+1, n
-	share := func(v float64) float64 { return (float64(i) + v/100) / float64(n) * 100 }
+	share := func(v float64) float64 {
+		if v < 0 {
+			return PctUnknown // unknown stays unknown: scaled, -1 reads as a real share
+		}
+		return (float64(i) + v/100) / float64(n) * 100
+	}
 	ev.Copy, ev.Sync, ev.Compress = share(ev.Copy), share(ev.Sync), share(ev.Compress)
 	return ev
 }
@@ -1076,7 +1102,7 @@ func (r *Registry) restore(ctx context.Context, id, engine, name string, emit fu
 	if est.Enough {
 		emit(BackupEvent{Phase: PhaseRestore, Message: "Fetching " + name})
 		if err := src.Materialize(downCtx, id, name, func(ev Event) {
-			emit(BackupEvent{Phase: PhaseRestore, Message: ev.Message, Copy: ev.Pct,
+			emit(BackupEvent{Phase: PhaseRestore, Message: ev.Message, Copy: measuredPct(ev),
 				Done: ev.Done, Total: ev.Total})
 		}); err != nil {
 			return "", fmt.Errorf("fetch backup: %w", err)
@@ -1234,7 +1260,7 @@ func (r *Registry) restoreInPlace(ctx context.Context, src Provider, id, name, a
 
 	emit(BackupEvent{Phase: PhaseRestore, Message: "Restoring " + name})
 	if err := src.RestoreInPlace(ctx, id, name, appDir, func(ev Event) {
-		emit(BackupEvent{Phase: PhaseRestore, Message: ev.Message, Copy: ev.Pct,
+		emit(BackupEvent{Phase: PhaseRestore, Message: ev.Message, Copy: measuredPct(ev),
 			Done: ev.Done, Total: ev.Total})
 	}); err != nil {
 		// 3. The marker stays. The app must not come back up on a half-restored

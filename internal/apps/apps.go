@@ -167,6 +167,11 @@ type App struct {
 	UpdateTotal   int64   `json:"update_total,omitempty"`
 	UpdateRate    float64 `json:"update_rate,omitempty"`
 	UpdateETA     int     `json:"update_eta,omitempty"`
+	// Serving says the app is still up and usable while the backup or update in
+	// flight runs — the live backup pass, an update's checks and image pull — so the
+	// tile keeps its colour and opens the app, with the bar still showing. It goes
+	// false the moment the operation takes the app down. Never set by List() itself.
+	Serving bool `json:"serving,omitempty"`
 }
 
 // Health verdicts, aggregated across a project's containers.
