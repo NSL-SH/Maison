@@ -44,3 +44,21 @@ func TestBackupEventServing(t *testing.T) {
 		}
 	}
 }
+
+// A report with no measurable progress keeps the tile's bar where it was instead of
+// storing -1, which the tile rendered as "-1%".
+func TestTrackBackupHoldsLastKnownPct(t *testing.T) {
+	r := &Registry{backups: map[string]*BackupState{"app": {ID: "app", Phase: PhaseCopy, Serving: true}}}
+	track := r.trackBackup("app", nil)
+
+	track(BackupEvent{Phase: PhaseCopy, Copy: 40})
+	track(BackupEvent{Phase: PhaseCopy, Copy: PctUnknown})
+	if st := r.backups["app"]; st.Copy != 40 || !st.Serving {
+		t.Fatalf("after unknown copy report: Copy=%v Serving=%v, want 40 true", st.Copy, st.Serving)
+	}
+	track(BackupEvent{Phase: PhaseSync, Copy: 100, Sync: 30})
+	track(BackupEvent{Phase: PhaseSync, Copy: 100, Sync: PctUnknown})
+	if st := r.backups["app"]; st.Sync != 30 || st.Serving {
+		t.Fatalf("after unknown sync report: Sync=%v Serving=%v, want 30 false", st.Sync, st.Serving)
+	}
+}

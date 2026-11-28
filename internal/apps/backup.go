@@ -459,6 +459,17 @@ func (r *Registry) trackBackup(id string, extra func(BackupEvent)) func(BackupEv
 
 		r.mu.Lock()
 		if st := r.backups[id]; st != nil {
+			// A report with no measurable progress (kopia's lines between estimates)
+			// keeps the bar where it was: stored as-is, -1 reached the tile as "-1%".
+			if ev.Copy < 0 {
+				ev.Copy = st.Copy
+			}
+			if ev.Sync < 0 {
+				ev.Sync = st.Sync
+			}
+			if ev.Compress < 0 {
+				ev.Compress = st.Compress
+			}
 			st.Phase, st.Message = ev.Phase, ev.Message
 			st.Copy, st.Sync, st.Compress = ev.Copy, ev.Sync, ev.Compress
 			st.Done, st.Total, st.Rate, st.ETA = ev.Done, ev.Total, ev.Rate, ev.ETA
