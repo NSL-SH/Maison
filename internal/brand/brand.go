@@ -35,6 +35,14 @@ const (
 	// (see internal/apps.Reach). Go canonicalises it to X-Maison on the wire.
 	Header = "X-" + Slug
 
+	// AuthHeader marks a dashboard response to a request that arrived with an
+	// identity from the authenticating proxy in front of Maison (see
+	// internal/server.authedRequest). It says "a signed-in user made this request"
+	// and nothing about who: a reverse proxy or log reader in front of Maison can
+	// use it, e.g. to keep an intrusion detector from banning the user's address.
+	// Go canonicalises it to X-Maison-Auth on the wire.
+	AuthHeader = Header + "-Auth"
+
 	// GateRoot prefixes the control endpoints the launch page calls while an app
 	// is still down (see internal/server/gate.go). Double-underscore so it cannot
 	// collide with a real path on the app host it is standing in for.

@@ -183,6 +183,19 @@ which the old `SMTP_*`/`FEEDBACK_*` variables never did: an older image ignored 
 Owner names are letters, digits and `-`, starting with a letter, and are shown to the
 user ("Managed by Yundera").
 
+## The `X-Maison-Auth` response header
+
+Maison authenticates no one: the proxy in front of it is the boundary. When a dashboard
+request arrives with that proxy's forward-auth identity (`Remote-User` or
+`X-Forwarded-User`, as AppShield, Authelia, oauth2-proxy and Authentik send it), the
+response carries `X-Maison-Auth: 1`. It names no user and changes nothing in Maison; it
+lets whatever sits in front tell signed-in traffic apart, for instance a log reader that
+keeps an intrusion detector from banning the user's own address.
+
+It is only as trustworthy as the proxy: a deployment that lets a client reach Maison
+without it (which Maison never supports) lets the client claim an identity too. App
+hosts that Maison answers for while the app is down (the launch gate) never get it.
+
 ## Transition
 
 These still work, and go away once every deployment manages the settings instead:

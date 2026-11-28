@@ -705,11 +705,31 @@ func (s *Server) rootHandler(dashboard http.Handler) http.Handler {
 		w.Header().Set(brand.Header, "1")
 		if s.apps == nil || s.isDashboardHost(r.Host) {
 			s.seeHost(r.Host)
+			if authedRequest(r) {
+				w.Header().Set(brand.AuthHeader, "1")
+			}
 			dashboard.ServeHTTP(w, r)
 			return
 		}
 		gate.ServeHTTP(w, r)
 	})
+}
+
+// authedRequest reports whether r carries a user identity set by the
+// authenticating proxy in front of Maison: the forward-auth headers AppShield,
+// Authelia, oauth2-proxy and Authentik all send upstream.
+//
+// Maison authenticates no one itself (the proxy is its boundary), so this only
+// reflects what that proxy vouched for. rootHandler reads it on the dashboard
+// hosts alone: the launch gate stands in for app hosts, which reach Maison
+// without that proxy, where a client could supply the header itself.
+func authedRequest(r *http.Request) bool {
+	for _, h := range []string{"Remote-User", "X-Forwarded-User"} {
+		if strings.TrimSpace(r.Header.Get(h)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handlePing(w http.ResponseWriter, _ *http.Request) {
