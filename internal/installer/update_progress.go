@@ -35,6 +35,11 @@ type UpdateState struct {
 	Serving bool `json:"serving,omitempty"`
 }
 
+// unknownPct is a step's Pct when it reports no progress of its own — a stop, a
+// write, a compose up, a rollback, or a backup before the engine's first report. The
+// tile renders it as a moving bar rather than a fixed 0% or a full bar that lies.
+const unknownPct = -1.0
+
 // servingPhase reports whether the app is still up during an update step, as far as
 // the step alone can say. The backup step starts serving (its live pass) and the
 // backup's own reports refine it from there; see Installer.BackupBeforeUpdate.

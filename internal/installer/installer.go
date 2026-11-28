@@ -252,7 +252,7 @@ func (in *Installer) StartInstall(ctx context.Context, ref appstore.Ref, opts Op
 	if name == "" {
 		name = ref.ID
 	}
-	in.installs[project] = &InstallState{ID: project, Name: name, Icon: app.Icon, Phase: "pull", Message: "Queued"}
+	in.installs[project] = &InstallState{ID: project, Name: name, Icon: app.Icon, Phase: "pull", Message: "Queued", Download: unknownPct}
 	in.mu.Unlock()
 	in.notify()
 
@@ -433,12 +433,11 @@ func (in *Installer) Install(ctx context.Context, ref appstore.Ref, opts Options
 		}
 		emit(Event{Phase: "prepare", Message: "Restoring backup " + from.Name})
 		// Reported on the Download track. Restoring from a repository *is* a download,
-		// it happens before the image pull that track normally carries, and an engine
-		// that cannot measure its progress reports PctUnknown — which is negative, and
-		// would render as a bar of negative width, so it floors at zero and the message
-		// carries the detail instead.
+		// it happens before the image pull that track normally carries. An engine that
+		// cannot measure its progress reports PctUnknown, passed through as such: the
+		// tile renders it as a moving bar rather than a 0% that never moves.
 		if err := in.FetchBackup(ctx, project, from.Engine, from.Name, func(pct float64, msg string) {
-			emit(Event{Phase: "prepare", Message: msg, Download: max(pct, 0)})
+			emit(Event{Phase: "prepare", Message: msg, Download: pct})
 		}); err != nil {
 			return fmt.Errorf("restore backup: %w", err)
 		}
@@ -536,7 +535,9 @@ func (in *Installer) Install(ctx context.Context, ref appstore.Ref, opts Options
 	in.pullList(ctx, append(composeImages(f), stepImages(spec.Steps)...), emit)
 
 	// Track 2 — Start: bring the stack up, then follow Docker until it is running.
-	emit(Event{Phase: "start", Message: "Starting containers", Download: 100, Start: 15})
+	// `compose up` reports nothing while it creates the containers: unknown until
+	// awaitStart reads their state.
+	emit(Event{Phase: "start", Message: "Starting containers", Download: 100, Start: unknownPct})
 	if err := stackup.UpWithPrior(ctx, in.cfg, project, appDir, files, prior); err != nil {
 		return err
 	}
@@ -595,7 +596,12 @@ func (in *Installer) pullList(ctx context.Context, images []string, emit func(Ev
 	span := 100.0 / float64(len(images))
 	for i, img := range images {
 		base := float64(i) * span
-		emit(Event{Phase: "pull", Message: "Pulling " + img, Download: base})
+		// Nothing measured before the first image's first report: unknown, not 0%.
+		first := base
+		if i == 0 {
+			first = unknownPct
+		}
+		emit(Event{Phase: "pull", Message: "Pulling " + img, Download: first})
 		// Pull failures are non-fatal here — `compose up` will retry the pull.
 		_ = in.dx.PullImage(ctx, img, func(pct float64, status string) {
 			emit(Event{Phase: "pull", Message: img + ": " + status, Download: base + pct/100*span})

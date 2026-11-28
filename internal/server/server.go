@@ -388,16 +388,27 @@ func New(cfg config.Config, uiFS fs.FS) http.Handler {
 			// The backup's own events, smoothed into a rate and ETA the way the backup
 			// tile's are, so the update's backup phase reads like any other backup.
 			tr := &apps.Tracker{}
+			lastPhase := ""
 			emit := func(ev apps.BackupEvent) {
-				pct := ev.TrackPct()
-				if pct < 0 {
-					return // a moment (start, done), not a stretch with progress
-				}
-				p := tr.Observe(ev.Phase+"/"+ev.Engine, pct, ev.Done, ev.Total)
 				msg := "Backing up (the app keeps running)"
 				if ev.Phase == apps.PhaseSync {
 					msg = "Final sync (the app is stopped)"
 				}
+				pct := ev.TrackPct()
+				if pct < 0 {
+					// Nothing measured. Within a pass that is a gap between reports and
+					// the bar keeps its value; on entering a new pass it is said once —
+					// the tile moves to "unknown" and, crucially, Serving turns off the
+					// moment the app is being stopped rather than at the first byte of
+					// the sync.
+					if ev.Phase != lastPhase && (ev.Phase == apps.PhaseCopy || ev.Phase == apps.PhaseSync || ev.Phase == apps.PhaseCompress) {
+						lastPhase = ev.Phase
+						report(installer.UpdateState{Message: msg, Pct: -1, Serving: ev.Serving()})
+					}
+					return
+				}
+				lastPhase = ev.Phase
+				p := tr.Observe(ev.Phase+"/"+ev.Engine, pct, ev.Done, ev.Total)
 				report(installer.UpdateState{Message: msg, Pct: updateBackupPct(ev.Phase, pct),
 					Done: ev.Done, Total: ev.Total, Rate: p.Rate, ETA: int(p.ETA.Seconds()),
 					Serving: ev.Serving()})

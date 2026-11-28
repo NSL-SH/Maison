@@ -10,7 +10,7 @@
   import { ApiError } from '../../api/client'
   import { askInstallInputs, confirmInstall, type InstallNeeds } from '../../stores/ui'
   import { compatSummary } from '../../requirements'
-  import { apps, appProgress } from '../../stores/apps'
+  import { apps, appProgress, isIndeterminate } from '../../stores/apps'
   import { engineLabel, renderStamp } from '../../stores/backups'
   import { sanitizeProject } from '../../project'
   import { t } from '../../i18n'
@@ -81,6 +81,9 @@
   const progress = $derived(appProgress(entry))
   const busy = $derived(starting || progress !== null)
   const pct = $derived(Math.round(progress?.pct ?? 0))
+  // No real feedback yet — the click has not been answered, or the step reports
+  // nothing measurable: a moving bar and no percentage, never a 0% that sits still.
+  const indeterminate = $derived(!progress || isIndeterminate(progress))
   const failed = $derived(entry?.install_error ?? '')
   const isInstalled = $derived(
     installed || (!!entry && !entry.installing && !entry.uninstalling && !entry.install_error),
@@ -231,12 +234,16 @@
   <span
     class="pill installing"
     class:normal={size === 'normal'}
-    title="{progress ? $t(progress.label) : $t('installing')} {pct}%"
+    title="{progress ? $t(progress.label) : $t('installing')}{indeterminate ? '' : ` ${pct}%`}"
   >
     <span class="track">
-      <span class="fill {progress?.kind ?? 'download'}" style:width={`${pct}%`}></span>
+      <span
+        class="fill {progress?.kind ?? 'download'}"
+        class:fill-indeterminate={indeterminate}
+        style:width={indeterminate ? undefined : `${pct}%`}
+      ></span>
     </span>
-    <span class="pct">{pct}%</span>
+    {#if !indeterminate}<span class="pct">{pct}%</span>{/if}
   </span>
 {:else}
   <!-- The action goes on the wrapper, not the menu, so the trigger counts as inside:

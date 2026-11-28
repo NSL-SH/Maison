@@ -4,6 +4,7 @@
   import {
     appAction,
     appProgress,
+    isIndeterminate,
     dismissAppError,
     openApp,
     openTarget,
@@ -58,6 +59,8 @@
   // install pill, so the two always agree.
   const progress = $derived(tile.kind === 'app' ? appProgress(tile.app) : null)
   const progressEta = $derived(renderDuration(progress?.eta))
+  // No real progress feedback for this step (yet): a moving bar, no percentage.
+  const indeterminate = $derived(isIndeterminate(progress))
   /** Bytes and rate, for the tooltip — everything the tile itself has no room for. */
   const progressDetail = $derived.by(() => {
     if (!progress) return ''
@@ -288,17 +291,21 @@
   {#if progress}
     <div class="progress">
       <span class="plabel one-line" title={progressDetail}>
-        {$t(progress.label)}
-        {Math.round(progress.pct)}%
+        {$t(progress.label)}{#if !indeterminate}
+          {Math.round(progress.pct)}%{/if}
       </span>
       <!-- The one measured number a tile has room for. A tile is small, so the bytes
            and the rate go in the tooltip and the time left gets the line: "3 min left"
            answers the question people actually have in front of a progress bar. -->
-      {#if progressEta}
+      {#if progressEta && !indeterminate}
         <span class="plabel one-line eta">{$t('backup_time_left', { time: progressEta })}</span>
       {/if}
       <div class="pbar">
-        <span class="pfill {progress.kind}" style:width={`${progress.pct}%`}></span>
+        <span
+          class="pfill {progress.kind}"
+          class:fill-indeterminate={indeterminate}
+          style:width={indeterminate ? undefined : `${progress.pct}%`}
+        ></span>
       </div>
     </div>
   {/if}

@@ -52,7 +52,7 @@ func (r *Registry) ensureImages(ctx context.Context, id string, emit func(Backup
 	}
 	var failed []string
 	for _, img := range missing {
-		emit(BackupEvent{Phase: PhaseCopy, Message: "Pulling " + img})
+		emit(BackupEvent{Phase: PhaseCopy, Message: "Pulling " + img, Copy: PctUnknown})
 		if err := r.dx.PullImage(ctx, img, func(float64, string) {}); err != nil {
 			failed = append(failed, fmt.Sprintf("%s (%v)", img, err))
 		}

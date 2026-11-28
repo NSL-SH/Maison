@@ -421,7 +421,7 @@ func (r *Registry) StartRestore(ctx context.Context, id, engine, name string) er
 		r.mu.Unlock()
 		return nil
 	}
-	r.backups[id] = &BackupState{ID: id, Phase: PhaseRestore, Message: "Queued"}
+	r.backups[id] = &BackupState{ID: id, Phase: PhaseRestore, Message: "Queued", Copy: PctUnknown, Sync: PctUnknown, Compress: PctUnknown}
 	r.mu.Unlock()
 	r.changed()
 
@@ -549,7 +549,10 @@ func (r *Registry) beginBackup(id string) error {
 	if st := r.backups[id]; st != nil && st.Phase != PhaseError {
 		return fmt.Errorf("%s: %w", id, ErrBackupInFlight)
 	}
-	r.backups[id] = &BackupState{ID: id, Phase: PhaseCopy, Message: "Queued", Serving: true}
+	// Every track starts unknown, not 0%: nothing has been measured yet, and a bar
+	// sitting on 0% for the seconds an engine spends scanning reads as stuck.
+	r.backups[id] = &BackupState{ID: id, Phase: PhaseCopy, Message: "Queued", Serving: true,
+		Copy: PctUnknown, Sync: PctUnknown, Compress: PctUnknown}
 	return nil
 }
 
@@ -749,7 +752,8 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 			res[i].Err = err
 			continue
 		}
-		emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseCopy, Message: "Copying " + id}))
+		// Unknown until the engine's first report: the tile shows a moving bar, not 0%.
+		emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseCopy, Message: "Copying " + id, Copy: PctUnknown}))
 		if err := p.Snapshot(ctx, id, stamp, opts, func(ev Event) {
 			emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseCopy, Message: ev.Message, Copy: measuredPct(ev),
 				Done: ev.Done, Total: ev.Total}))
@@ -763,7 +767,7 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 	// not start it afterwards.
 	wasRunning := r.isRunning(ctx, id)
 	if wasRunning {
-		emit(BackupEvent{Phase: PhaseSync, Message: "Stopping " + id, Copy: 100})
+		emit(BackupEvent{Phase: PhaseSync, Message: "Stopping " + id, Copy: 100, Sync: PctUnknown})
 		if err := r.dx.StopProject(ctx, id); err != nil {
 			return nil, fmt.Errorf("stop app: %w", err)
 		}
@@ -815,7 +819,7 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 			res[i].Err = fmt.Errorf("the app's downtime budget was used up before %s could sync: %w", p.ID(), err)
 			continue
 		}
-		emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseSync, Message: "Syncing changes", Copy: 100}))
+		emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseSync, Message: "Syncing changes", Copy: 100, Sync: PctUnknown}))
 		if err := p.Snapshot(downCtx, id, stamp, opts, func(ev Event) {
 			emit(r.engineEvent(ps, i, BackupEvent{Phase: PhaseSync, Message: ev.Message, Copy: 100, Sync: measuredPct(ev),
 				Done: ev.Done, Total: ev.Total}))

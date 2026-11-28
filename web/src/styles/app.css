@@ -147,3 +147,35 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Indeterminate progress: a step with no real progress feedback (yet). The fill
+   becomes a segment sweeping left to right on a loop, with no percentage shown —
+   a 0% that never moves reads as stuck, and a full bar says nothing. Apply the
+   class to the fill element of any progress bar; its track must clip overflow. */
+.fill-indeterminate {
+  width: 30% !important;
+  animation: progress-indeterminate 1.3s ease-in-out infinite;
+}
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fill-indeterminate {
+    width: 100% !important;
+    animation: progress-indeterminate-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes progress-indeterminate-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 0.9;
+    }
+  }
+}

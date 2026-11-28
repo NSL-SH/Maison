@@ -205,7 +205,7 @@ func (in *Installer) ApplyUpdate(ctx context.Context, project string, opts Updat
 	// costs a size walk, not a download followed by a refusal. The walk is stat-only,
 	// and only made when the local disk is one of the destinations.
 	if !opts.NoBackup && in.BackupRoom != nil {
-		step(UpdatePhaseCheck, "Checking where the backup can go", 0)
+		step(UpdatePhaseCheck, "Checking where the backup can go", unknownPct)
 		var room *RoomError
 		if err := in.BackupRoom(ctx, project); errors.As(err, &room) {
 			return res, in.refuseNoRollback(project, err)
@@ -243,7 +243,7 @@ func (in *Installer) ApplyUpdate(ctx context.Context, project string, opts Updat
 		res.Warning = "updated without a backup, as requested: a failed update cannot be undone"
 		log.Printf("update %s: %s", project, res.Warning)
 	case in.BackupBeforeUpdate != nil:
-		step(UpdatePhaseBackup, "Backing up", 0)
+		step(UpdatePhaseBackup, "Backing up", unknownPct)
 		name, warning, err := in.BackupBeforeUpdate(ctx, project, func(st UpdateState) {
 			st.Phase = UpdatePhaseBackup
 			in.setUpdate(project, st)
@@ -280,14 +280,14 @@ func (in *Installer) ApplyUpdate(ctx context.Context, project string, opts Updat
 	// answers "timeout") and the update is rolled back for nothing. Nothing has been
 	// written yet, so a stop that fails needs no undo.
 	if in.StopBeforeUpdate != nil {
-		step(UpdatePhaseStop, "Stopping the current version", 100)
+		step(UpdatePhaseStop, "Stopping the current version", unknownPct)
 		if err := in.StopBeforeUpdate(ctx, project); err != nil {
 			log.Printf("update %s: stop before update: %v", project, err)
 			return res, fmt.Errorf("stop %s before updating: %w", project, err)
 		}
 	}
 
-	step(UpdatePhaseApply, "Writing the new version", 100)
+	step(UpdatePhaseApply, "Writing the new version", unknownPct)
 	if err := os.WriteFile(composePath, newBase, 0o644); err != nil {
 		return res, err
 	}
@@ -319,7 +319,7 @@ func (in *Installer) ApplyUpdate(ctx context.Context, project string, opts Updat
 	}
 	// No measured track: converging and `compose up` report no progress, so the bar
 	// sits full while the label says what is happening (as a backup's start does).
-	step(UpdatePhaseStart, "Starting the new version", 100)
+	step(UpdatePhaseStart, "Starting the new version", unknownPct)
 	// The .env as it stands before UpWith syncs it is what a seeded secret reads
 	// (stackup.EnsureSecrets): an update that introduces `${APP_DEFAULT_PASSWORD}|alnum:32`
 	// must keep the password the app's database was initialised with. Without it
@@ -401,7 +401,7 @@ func (in *Installer) rollBack(ctx context.Context, project string, res UpdateRes
 	}
 	// Deliberately not the request's context: it may already be cancelled by the
 	// failure, and abandoning a rollback half-done is the worst available outcome.
-	in.setUpdate(project, UpdateState{Phase: UpdatePhaseRollback, Message: "Restoring the backup", Pct: 100})
+	in.setUpdate(project, UpdateState{Phase: UpdatePhaseRollback, Message: "Restoring the backup", Pct: unknownPct})
 	if err := in.RollBack(context.WithoutCancel(ctx), project, res.Backup); err != nil {
 		res.Warning = "the update failed AND restoring the backup failed: " + err.Error()
 		log.Printf("update %s: %s", project, res.Warning)

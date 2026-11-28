@@ -290,7 +290,10 @@ export type ProgressKind = 'download' | 'install' | 'uninstall' | 'backup' | 'up
 
 export interface AppProgress {
   kind: ProgressKind
-  /** 0-100 for the step in progress — not an average across the operation. */
+  /** 0-100 for the step in progress — not an average across the operation — or
+   *  negative when the step has no real progress feedback (yet): the bar is then drawn
+   *  indeterminate, a moving segment with no percentage, rather than a 0% that sits
+   *  still or a full bar that says nothing. See isIndeterminate. */
   pct: number
   /** i18n key for the step's label ("Downloading…", "Archiving…", …). */
   label: string
@@ -327,16 +330,48 @@ const updateLabels: Record<string, string> = {
   rollback: 'update_rolling_back',
 }
 
+/** Update steps whose percentage is measured. Every other step (check, stop, apply,
+ *  start, rollback) reports nothing while it runs, and is drawn indeterminate. */
+const measuredUpdatePhases = new Set(['pull', 'backup', 'migrate'])
+
+/** True when a progress bar has no real feedback to show: drawn as a moving segment,
+ *  with no percentage. */
+export function isIndeterminate(p: AppProgress | null | undefined): boolean {
+  return !!p && p.pct < 0
+}
+
+/** The last bar shown per app, so a gap between two reports keeps the bar where it
+ *  was instead of flipping to indeterminate and back. Keyed by step (kind + label):
+ *  a new step starts fresh, so it shows indeterminate until its first real report. */
+const held = new Map<string, { key: string; pct: number }>()
+
+/** The single progress bar an app shows, or null when nothing is in flight. See
+ *  measuredProgress for what each operation reports; this adds the hold above. */
 export function appProgress(a: App | undefined): AppProgress | null {
+  const p = measuredProgress(a)
+  if (!a) return p
+  if (!p) {
+    held.delete(a.id)
+    return null
+  }
+  const key = `${p.kind}/${p.label}`
+  const h = held.get(a.id)
+  if (p.pct < 0 && h && h.key === key && h.pct >= 0) return { ...p, pct: h.pct }
+  const pct = p.pct < 0 ? -1 : Math.min(100, p.pct)
+  held.set(a.id, { key, pct })
+  return { ...p, pct }
+}
+
+function measuredProgress(a: App | undefined): AppProgress | null {
   if (!a) return null
   if (a.updating) {
-    // One bar for the step running now, in the update colour. Only the backup step
-    // is measured in bytes; the rest are moments or unmeasured, and carry their
-    // own percentage (full while a step with no track runs).
+    // One bar for the step running now, in the update colour. Only the pull, the
+    // backup and the data migrations are measured; the other steps report nothing
+    // while they run and are drawn indeterminate.
     const backup = a.update_phase === 'backup'
     return {
       kind: 'update',
-      pct: a.update_pct ?? 0,
+      pct: measuredUpdatePhases.has(a.update_phase ?? '') ? (a.update_pct ?? 0) : -1,
       label: updateLabels[a.update_phase ?? ''] ?? 'updating',
       ...(backup
         ? { eta: a.update_eta, done: a.update_done, total: a.update_total, rate: a.update_rate }
@@ -352,7 +387,8 @@ export function appProgress(a: App | undefined): AppProgress | null {
     // that has definitely not happened yet.
     if (a.phase === 'archive')
       return { kind: 'uninstall', pct: a.archive ?? 0, label: 'archiving' }
-    if (a.phase === 'remove') return { kind: 'uninstall', pct: a.remove ?? 0, label: 'removing' }
+    // Removing containers and the folder reports nothing measurable.
+    if (a.phase === 'remove') return { kind: 'uninstall', pct: -1, label: 'removing' }
     return { kind: 'uninstall', pct: a.uninstall_backup ?? 0, label: 'backing_up' }
   }
   if (a.installing) {
@@ -370,15 +406,15 @@ export function appProgress(a: App | undefined): AppProgress | null {
     // zip backup. A folder backup therefore reported "Compressing" for the whole
     // window between sync reaching 100 and the operation ending.
     //
-    // Restore and start have no measured track — a restore is renames and (for a
-    // zip) an extract — so they sit at a full bar while the label says what is
-    // happening.
+    // A restore is measured only when an engine streams it back (it starts unknown,
+    // and a local restore — renames and, for a zip, an extract — stays unknown); the
+    // restart after a backup is never measured. Both draw indeterminate meanwhile.
     // The measured numbers ride along with whichever track is reported below. They
     // belong to the phase, not to the operation, so they are attached once here
     // rather than being re-derived per branch.
     const m = { eta: a.backup_eta, done: a.backup_done, total: a.backup_total, rate: a.backup_rate }
-    if (a.phase === 'restore') return { kind: 'backup', pct: 100, label: 'restoring', ...m }
-    if (a.phase === 'start') return { kind: 'backup', pct: 100, label: 'starting_up' }
+    if (a.phase === 'restore') return { kind: 'backup', pct: a.copy ?? 0, label: 'restoring', ...m }
+    if (a.phase === 'start') return { kind: 'backup', pct: -1, label: 'starting_up' }
     if (a.phase === 'compress') return { kind: 'backup', pct: a.compress ?? 0, label: 'compressing', ...m }
     if (a.phase === 'sync') return { kind: 'backup', pct: a.sync ?? 0, label: 'syncing', ...m }
     if (a.phase === 'copy') return { kind: 'backup', pct: a.copy ?? 0, label: 'copying', ...m }

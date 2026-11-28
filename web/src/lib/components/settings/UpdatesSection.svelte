@@ -23,7 +23,7 @@
   import { loc, t } from '../../i18n'
   import { settingsApp } from '../../stores/ui'
   import { settings } from '../../stores/settings'
-  import { setUpdateRef, apps, appProgress, subscribeApps, type AppProgress } from '../../stores/apps'
+  import { setUpdateRef, apps, appProgress, isIndeterminate, subscribeApps, type AppProgress } from '../../stores/apps'
   import { renderDuration, renderElapsed, renderRate, renderSize } from '../../format'
   import { incidents, loadIncidents, subscribeIncidents } from '../../stores/incidents'
   import {
@@ -220,7 +220,9 @@
   const runCurrent = $derived((run?.items ?? []).find((i) => i.status === 'updating'))
   const currentLive = $derived(runCurrent ? live.get(runCurrent.id) : undefined)
   const runPct = $derived(
-    runTotal ? ((runDone + (currentLive?.p?.pct ?? 0) / 100) / runTotal) * 100 : 0,
+    // An app on a step with no measured progress counts as not started: the run's
+    // bar is measured in apps finished, and a negative "unknown" must not pull it back.
+    runTotal ? ((runDone + Math.max(0, currentLive?.p?.pct ?? 0) / 100) / runTotal) * 100 : 0,
   )
   const runResult = $derived.by(() => {
     const items = run?.items ?? []
@@ -340,9 +342,15 @@
   {#if p}
     <div class="step">
       <span class="step-label">
-        {$t(p.label)} {Math.round(p.pct)}%{#if msg}<span class="muted">&nbsp;· {msg}</span>{/if}
+        {$t(p.label)}{#if !isIndeterminate(p)} {Math.round(p.pct)}%{/if}{#if msg}<span class="muted">&nbsp;· {msg}</span>{/if}
       </span>
-      <div class="bar"><span class="fill" style:width={`${p.pct}%`}></span></div>
+      <div class="bar">
+        <span
+          class="fill"
+          class:fill-indeterminate={isIndeterminate(p)}
+          style:width={isIndeterminate(p) ? undefined : `${p.pct}%`}
+        ></span>
+      </div>
       {#if progressDetail(p)}<span class="step-detail">{progressDetail(p)}</span>{/if}
     </div>
   {/if}
@@ -494,7 +502,7 @@
         {#if runCurrent}
           <span class="muted">
             — {$loc(byID.get(runCurrent.id)?.title, byID.get(runCurrent.id)?.name ?? runCurrent.id)}{#if currentLive?.p}
-              · {$t(currentLive.p.label)} {Math.round(currentLive.p.pct)}%{/if}
+              · {$t(currentLive.p.label)}{#if !isIndeterminate(currentLive.p)} {Math.round(currentLive.p.pct)}%{/if}{/if}
           </span>
         {/if}
       </p>

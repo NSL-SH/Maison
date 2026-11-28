@@ -122,7 +122,7 @@ func (r *Registry) StartUninstall(id string, opts UninstallOpts) error {
 		r.mu.Unlock()
 		return nil // already uninstalling — attach, don't restart
 	}
-	r.uninstalls[id] = &UninstallState{ID: id, Phase: PhaseBackup, Message: "Queued"}
+	r.uninstalls[id] = &UninstallState{ID: id, Phase: PhaseBackup, Message: "Queued", Backup: PctUnknown}
 	r.mu.Unlock()
 	r.changed()
 
@@ -391,7 +391,7 @@ func (r *Registry) uninstallApp(ctx context.Context, id string, uo *UninstallOpt
 	// app simply start again.
 	wasRunning := r.isRunning(ctx, id)
 	if wasRunning {
-		emit(UninstallEvent{Phase: PhaseBackup, Message: "Stopping " + id})
+		emit(UninstallEvent{Phase: PhaseBackup, Message: "Stopping " + id, Backup: PctUnknown})
 		if err := r.dx.StopProject(ctx, id); err != nil {
 			return "", fmt.Errorf("stop app: %w", err)
 		}
@@ -437,9 +437,20 @@ func (r *Registry) uninstallApp(ctx context.Context, id string, uo *UninstallOpt
 		// Each engine gets its own slice of the two tracks, so the bar advances through
 		// the destinations instead of restarting at each one.
 		lo := float64(i) / n * 100
-		scale := func(pct float64) float64 { return lo + max(pct, 0)/n }
+		// Unknown stays unknown while nothing has been measured at all (the first
+		// engine, before its first report); past that, the engines already done are
+		// a real lower bound.
+		scale := func(pct float64) float64 {
+			if pct < 0 {
+				if lo == 0 {
+					return PctUnknown
+				}
+				return lo
+			}
+			return lo + pct/n
+		}
 
-		emit(UninstallEvent{Phase: PhaseBackup, Message: "Backing up " + id, Backup: lo})
+		emit(UninstallEvent{Phase: PhaseBackup, Message: "Backing up " + id, Backup: scale(PctUnknown)})
 		if err := p.Snapshot(downCtx, id, stamp, opts, func(ev Event) {
 			emit(UninstallEvent{Phase: PhaseBackup, Message: ev.Message, Backup: scale(measuredPct(ev))})
 		}); err != nil {
