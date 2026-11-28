@@ -391,8 +391,13 @@ func New(cfg config.Config, uiFS fs.FS) http.Handler {
 			lastPhase := ""
 			emit := func(ev apps.BackupEvent) {
 				msg := "Backing up (the app keeps running)"
-				if ev.Phase == apps.PhaseSync {
+				switch ev.Phase {
+				case apps.PhaseSync:
 					msg = "Final sync (the app is stopped)"
+				case apps.PhaseCompress:
+					msg = "Finishing the backup (the app is stopped)"
+				case apps.PhaseStart:
+					msg = "Restarting the app after its backup"
 				}
 				pct := ev.TrackPct()
 				if pct < 0 {
@@ -401,7 +406,7 @@ func New(cfg config.Config, uiFS fs.FS) http.Handler {
 					// the tile moves to "unknown" and, crucially, Serving turns off the
 					// moment the app is being stopped rather than at the first byte of
 					// the sync.
-					if ev.Phase != lastPhase && (ev.Phase == apps.PhaseCopy || ev.Phase == apps.PhaseSync || ev.Phase == apps.PhaseCompress) {
+					if ev.Phase != lastPhase && (ev.Phase == apps.PhaseCopy || ev.Phase == apps.PhaseSync || ev.Phase == apps.PhaseCompress || ev.Phase == apps.PhaseStart) {
 						lastPhase = ev.Phase
 						report(installer.UpdateState{Message: msg, Pct: -1, Serving: ev.Serving()})
 					}
@@ -413,7 +418,9 @@ func New(cfg config.Config, uiFS fs.FS) http.Handler {
 					Done: ev.Done, Total: ev.Total, Rate: p.Rate, ETA: int(p.ETA.Seconds()),
 					Serving: ev.Serving()})
 			}
-			res, err := s.apps.BackupTo(ctx, targets, project, false, emit)
+			// The app is left stopped when the backup lands: the update stops it next
+			// anyway, and restarting it in between only added a start and a stop.
+			res, err := s.apps.BackupToBeforeUpdate(ctx, targets, project, emit)
 			if err != nil {
 				return "", "", err
 			}

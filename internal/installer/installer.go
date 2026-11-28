@@ -604,6 +604,12 @@ func (in *Installer) pullList(ctx context.Context, images []string, emit func(Ev
 		emit(Event{Phase: "pull", Message: "Pulling " + img, Download: first})
 		// Pull failures are non-fatal here — `compose up` will retry the pull.
 		_ = in.dx.PullImage(ctx, img, func(pct float64, status string) {
+			// Docker's opening lines carry no measure: unknown, not 0%, until the
+			// first image has actually moved.
+			if i == 0 && pct <= 0 {
+				emit(Event{Phase: "pull", Message: img + ": " + status, Download: unknownPct})
+				return
+			}
 			emit(Event{Phase: "pull", Message: img + ": " + status, Download: base + pct/100*span})
 		})
 		emit(Event{Phase: "pull", Message: "Pulled " + img, Download: base + span})

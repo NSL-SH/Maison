@@ -102,6 +102,12 @@ func pullForUpdate(ctx context.Context, p imagePuller, images []string, emit fun
 			if attempt > 1 {
 				msg = fmt.Sprintf("%s (attempt %d): %s", img, attempt, status)
 			}
+			// Docker's opening lines ("Pulling", "Pulling from …") carry no measure:
+			// before the first image has moved, that is unknown rather than 0%.
+			if i == 0 && pct <= 0 {
+				emit(Event{Phase: "pull", Message: msg, Download: unknownPct})
+				return
+			}
 			emit(Event{Phase: "pull", Message: msg, Download: base + pct/100*span})
 		})
 		if err != nil {

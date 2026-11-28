@@ -661,6 +661,27 @@ type Result struct {
 // the rest carry on. A failure is not contagious because the destinations are not:
 // losing the offsite copy of an app is not a reason to also lose the local one.
 func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip bool, emit func(BackupEvent)) ([]Result, error) {
+	return r.backupTo(ctx, ps, id, zip, emit, false)
+}
+
+// BackupToBeforeUpdate is BackupTo for an update about to replace the app: when the
+// backup lands, the app is LEFT STOPPED instead of being restarted on the version the
+// update is about to stop again. That restart bought nothing — the update's own stop
+// came right after it — and cost a full start and stop, with the app up but locked
+// for the length of its readiness wait.
+//
+// Only a backup that committed and returned no error leaves the app down. Every other
+// outcome restarts it exactly as BackupTo does, because the update then refuses and
+// the app has to come back on the version it had.
+//
+// An app that declares itself not stoppable is restarted all the same: the update
+// skips its stop for that app, so leaving it down here would take it down for the
+// whole update.
+func (r *Registry) BackupToBeforeUpdate(ctx context.Context, ps []Provider, id string, emit func(BackupEvent)) ([]Result, error) {
+	return r.backupTo(ctx, ps, id, false, emit, r.Stoppable(id))
+}
+
+func (r *Registry) backupTo(ctx context.Context, ps []Provider, id string, zip bool, emit func(BackupEvent), holdDown bool) (out []Result, outErr error) {
 	if emit == nil {
 		emit = func(BackupEvent) {}
 	}
@@ -776,6 +797,11 @@ func (r *Registry) BackupTo(ctx context.Context, ps []Provider, id string, zip b
 			return nil, fmt.Errorf("stop app: %w", err)
 		}
 		defer func() {
+			// Held down for an update that goes on to replace it: see BackupToBeforeUpdate.
+			if holdDown && outErr == nil && anyCommitted(committed) {
+				log.Printf("backup %s: left stopped for the update that follows", id)
+				return
+			}
 			emit(BackupEvent{Phase: PhaseStart, Message: "Starting " + id, Copy: 100, Sync: 100})
 			if err := r.EnsureStarted(context.WithoutCancel(ctx), id); err != nil {
 				log.Printf("backup %s: restart after backup: %v", id, err)
