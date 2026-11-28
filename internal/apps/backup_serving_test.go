@@ -56,6 +56,13 @@ func TestTrackBackupHoldsLastKnownPct(t *testing.T) {
 	if st := r.backups["app"]; st.Copy != 40 || !st.Serving {
 		t.Fatalf("after unknown copy report: Copy=%v Serving=%v, want 40 true", st.Copy, st.Serving)
 	}
+	// A new phase that has measured nothing yet stays unknown: it must not inherit
+	// the 0 the copy events carried in their Sync field.
+	track(BackupEvent{Phase: PhaseCopy, Copy: 100})
+	track(BackupEvent{Phase: PhaseSync, Copy: 100, Sync: PctUnknown})
+	if st := r.backups["app"]; st.Sync != PctUnknown {
+		t.Fatalf("sync just started: Sync=%v, want PctUnknown", st.Sync)
+	}
 	track(BackupEvent{Phase: PhaseSync, Copy: 100, Sync: 30})
 	track(BackupEvent{Phase: PhaseSync, Copy: 100, Sync: PctUnknown})
 	if st := r.backups["app"]; st.Sync != 30 || st.Serving {
